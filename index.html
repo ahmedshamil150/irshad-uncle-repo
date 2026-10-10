@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1d4ed8" />
+  <title>Irshad Finance</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ===================== LOGIN ===================== -->
+  <div id="login-screen" class="login-screen" hidden>
+    <form id="login-form" class="login-card" autocomplete="on">
+      <h1>Irshad Finance</h1>
+      <p class="login-sub">irshad uncle ka lia finance app</p>
+
+      <label class="field">
+        <span>Email</span>
+        <input type="email" id="login-email" required autocomplete="username" placeholder="irshad@irshad.app" />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••" />
+      </label>
+
+      <p id="login-error" class="form-error" hidden></p>
+      <button type="submit" class="btn btn-primary btn-block" id="login-btn">Sign in</button>
+    </form>
+  </div>
+
+  <!-- ===================== APP ===================== -->
+  <div id="app" class="app" hidden>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-name">Irshad Finance</span>
+      </div>
+      <div class="header-right">
+        <span id="header-user" class="header-user"></span>
+        <button type="button" id="logout-btn" class="btn btn-ghost btn-sm">Logout</button>
+      </div>
+    </header>
+
+    <nav class="tabbar" id="tabbar">
+      <button type="button" class="tab active" data-view="dashboard">Dashboard</button>
+      <button type="button" class="tab" data-view="sales">Sales</button>
+      <button type="button" class="tab" data-view="receivables">Dues (Lena Hai)</button>
+      <button type="button" class="tab" data-view="payables">Dues (Dena Hai)</button>
+      <button type="button" class="tab" data-view="ledger">Expenses &amp; Income</button>
+    </nav>
+
+    <main class="main">
+
+      <!-- ============ DASHBOARD ============ -->
+      <section id="view-dashboard" class="view">
+        <div class="filterbar">
+          <div class="segmented" id="range-seg">
+            <button type="button" class="seg active" data-range="month">This month</button>
+            <button type="button" class="seg" data-range="year">This year</button>
+            <button type="button" class="seg" data-range="all">All time</button>
+            <button type="button" class="seg" data-range="custom">Custom</button>
+          </div>
+          <div id="custom-range" class="custom-range" hidden>
+            <input type="date" id="range-from" aria-label="From date" />
+            <span class="dash">—</span>
+            <input type="date" id="range-to" aria-label="To date" />
+          </div>
+        </div>
+
+        <div id="dash-cards" class="cards"></div>
+
+        <div class="card">
+          <h3 class="card-title">Sales by source</h3>
+          <div id="source-split" class="source-split"></div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Recent sales</h3>
+          <div id="recent-sales" class="mini-list"></div>
+        </div>
+      </section>
+
+      <!-- ============ SALES ============ -->
+      <section id="view-sales" class="view" hidden>
+        <div class="toolbar">
+          <input type="search" id="sales-search" class="input" placeholder="Search customer…" />
+          <select id="sales-source-filter" class="input">
+            <option value="">All sources</option>
+            <option value="office">Office</option>
+            <option value="dealer">Dealer</option>
+            <option value="salesman">Salesman</option>
+          </select>
+          <button type="button" id="new-sale-btn" class="btn btn-primary">+ New sale</button>
+        </div>
+        <div id="sales-list" class="list"></div>
+      </section>
+
+      <!-- ============ RECEIVABLES ============ -->
+      <section id="view-receivables" class="view" hidden>
+        <div id="receivable-summary" class="cards cards-tight"></div>
+        <div class="toolbar">
+          <input type="search" id="receivable-search" class="input" placeholder="Search customer…" />
+        </div>
+        <div id="receivable-list" class="list"></div>
+      </section>
+
+      <!-- ============ PAYABLES ============ -->
+      <section id="view-payables" class="view" hidden>
+        <div class="toolbar">
+          <div class="spacer"></div>
+          <button type="button" id="new-payable-btn" class="btn btn-primary">+ Add dues (dena hai)</button>
+        </div>
+        <div id="payable-list" class="list"></div>
+      </section>
+
+      <!-- ============ LEDGER ============ -->
+      <section id="view-ledger" class="view" hidden>
+        <div class="toolbar">
+          <div class="ledger-totals" id="ledger-totals"></div>
+          <button type="button" id="new-ledger-btn" class="btn btn-primary">+ New entry</button>
+        </div>
+        <div id="ledger-list" class="list"></div>
+      </section>
+
+    </main>
+
+    <nav class="bottom-nav" id="bottom-nav">
+      <button type="button" class="bnav active" data-view="dashboard">
+        <span class="bnav-ico">▦</span><span>Home</span>
+      </button>
+      <button type="button" class="bnav" data-view="sales">
+        <span class="bnav-ico">Rs</span><span>Sales</span>
+      </button>
+      <button type="button" class="bnav" data-view="receivables">
+        <span class="bnav-ico">↓</span><span>Lena Hai</span>
+      </button>
+      <button type="button" class="bnav" data-view="payables">
+        <span class="bnav-ico">↑</span><span>Dena Hai</span>
+      </button>
+      <button type="button" class="bnav" data-view="ledger">
+        <span class="bnav-ico">≡</span><span>Exp/Inc</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ===================== MODALS ===================== -->
+
+  <!-- Sale form -->
+  <div id="modal-sale" class="modal" hidden>
+    <div class="modal-dialog" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="sale-modal-title">New sale</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <form id="sale-form" class="modal-body form">
+        <input type="hidden" id="sale-id" />
+        <div class="grid-2">
+          <label class="field"><span>Date *</span>
+            <input type="date" id="sale-date" required />
+          </label>
+          <label class="field"><span>Source *</span>
+            <select id="sale-source" required>
+              <option value="office">Office</option>
+              <option value="dealer">Dealer</option>
+              <option value="salesman">Salesman</option>
+            </select>
+          </label>
+        </div>
+        <label class="field" id="salesman-field" hidden><span>Salesman name *</span>
+          <input type="text" id="sale-salesman" placeholder="Salesman name" />
+        </label>
+        <label class="field"><span>Customer name *</span>
+          <input type="text" id="sale-customer" required list="customer-names" placeholder="Customer name" />
+          <datalist id="customer-names"></datalist>
+        </label>
+        <label class="field"><span>Item / machine</span>
+          <input type="text" id="sale-item" placeholder="e.g. Ultrasound machine model XYZ" />
+        </label>
+
+        <div class="grid-3">
+          <label class="field"><span>Total sale (Rs) *</span>
+            <input type="number" id="sale-total" inputmode="decimal" min="0" step="0.01" required placeholder="0" />
+          </label>
+          <label class="field"><span>Cash (Rs)</span>
+            <input type="number" id="sale-cash" inputmode="decimal" min="0" step="0.01" value="0" />
+          </label>
+          <label class="field"><span>Bank (Rs)</span>
+            <input type="number" id="sale-bank" inputmode="decimal" min="0" step="0.01" value="0" />
+          </label>
+        </div>
+        <div class="grid-2">
+          <label class="field"><span>Loan (Rs)</span>
+            <input type="number" id="sale-loan" inputmode="decimal" min="0" step="0.01" value="0" />
+          </label>
+          <div class="paid-summary" id="sale-paid-summary"></div>
+        </div>
+
+        <label class="check">
+          <input type="checkbox" id="sale-installment" />
+          <span>Installment sale</span>
+        </label>
+
+        <div id="installment-fields" class="installment-fields" hidden>
+          <div class="grid-2">
+            <label class="field"><span>Number of installments</span>
+              <input type="number" id="inst-count" inputmode="numeric" min="1" max="120" step="1" value="12" />
+            </label>
+            <label class="field"><span>First due date</span>
+              <input type="date" id="inst-first" />
+            </label>
+          </div>
+          <div id="inst-preview" class="inst-preview"></div>
+        </div>
+
+        <label class="field"><span>Notes</span>
+          <textarea id="sale-notes" rows="2" placeholder="Optional notes"></textarea>
+        </label>
+
+        <p id="sale-form-error" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary" id="sale-save-btn">Save sale</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Payment form -->
+  <div id="modal-payment" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>Record payment</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <form id="payment-form" class="modal-body form">
+        <input type="hidden" id="pay-target-type" />
+        <input type="hidden" id="pay-target-id" />
+        <p id="pay-context" class="pay-context"></p>
+        <div class="grid-2">
+          <label class="field"><span>Date *</span>
+            <input type="date" id="pay-date" required />
+          </label>
+          <label class="field"><span>Amount (Rs) *</span>
+            <input type="number" id="pay-amount" inputmode="decimal" min="0.01" step="0.01" required placeholder="0" />
+          </label>
+        </div>
+        <label class="field"><span>Method</span>
+          <select id="pay-method">
+            <option value="cash">Cash</option>
+            <option value="bank">Bank</option>
+          </select>
+        </label>
+        <label class="field"><span>Notes</span>
+          <input type="text" id="pay-notes" placeholder="Optional" />
+        </label>
+        <p id="payment-form-error" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save payment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Payable form -->
+  <div id="modal-payable" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="payable-modal-title">Add dues (dena hai)</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <form id="payable-form" class="modal-body form">
+        <input type="hidden" id="payable-id" />
+        <div class="grid-2">
+          <label class="field"><span>Date *</span>
+            <input type="date" id="payable-date" required />
+          </label>
+          <label class="field"><span>Amount (Rs) *</span>
+            <input type="number" id="payable-amount" inputmode="decimal" min="0.01" step="0.01" required placeholder="0" />
+          </label>
+        </div>
+        <label class="field"><span>Dealer / supplier *</span>
+          <input type="text" id="payable-party" required placeholder="Party name" />
+        </label>
+        <label class="field"><span>Notes</span>
+          <input type="text" id="payable-notes" placeholder="Optional" />
+        </label>
+        <p id="payable-form-error" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save payable</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Ledger form -->
+  <div id="modal-ledger" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="ledger-modal-title">New entry</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <form id="ledger-form" class="modal-body form">
+        <input type="hidden" id="ledger-id" />
+        <div class="grid-2">
+          <label class="field"><span>Date *</span>
+            <input type="date" id="ledger-date" required />
+          </label>
+          <label class="field"><span>Details *</span>
+            <input type="text" id="ledger-particulars" required placeholder="e.g. Office expense" />
+          </label>
+        </div>
+        <div class="grid-2">
+          <label class="field"><span>Debit (Rs)</span>
+            <input type="number" id="ledger-debit" inputmode="decimal" min="0" step="0.01" value="0" />
+          </label>
+          <label class="field"><span>Credit (Rs)</span>
+            <input type="number" id="ledger-credit" inputmode="decimal" min="0" step="0.01" value="0" />
+          </label>
+        </div>
+        <label class="field"><span>Notes</span>
+          <input type="text" id="ledger-notes" placeholder="Optional" />
+        </label>
+        <p id="ledger-form-error" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save entry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sale detail -->
+  <div id="modal-sale-detail" class="modal" hidden>
+    <div class="modal-dialog modal-lg" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>Sale detail</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <div class="modal-body" id="sale-detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Confirm dialog -->
+  <div id="modal-confirm" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="confirm-title">Are you sure?</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-text" class="confirm-text"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirm-yes">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <div id="busy" class="busy" hidden><div class="spinner"></div></div>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
