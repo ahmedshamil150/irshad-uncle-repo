@@ -44,8 +44,8 @@
     <nav class="tabbar" id="tabbar">
       <button type="button" class="tab active" data-view="dashboard">Dashboard</button>
       <button type="button" class="tab" data-view="sales">Sales</button>
-      <button type="button" class="tab" data-view="receivables">Dues (Lena Hai)</button>
-      <button type="button" class="tab" data-view="payables">Dues (Dena Hai)</button>
+      <button type="button" class="tab" data-view="receivables">Debit</button>
+      <button type="button" class="tab" data-view="payables">Credit</button>
       <button type="button" class="tab" data-view="ledger">Expenses &amp; Income</button>
     </nav>
 
@@ -90,6 +90,7 @@
             <option value="dealer">Dealer</option>
             <option value="salesman">Salesman</option>
           </select>
+          <button type="button" id="manage-salesmen-btn" class="btn btn-ghost">Salesmen</button>
           <button type="button" id="new-sale-btn" class="btn btn-primary">+ New sale</button>
         </div>
         <div id="sales-list" class="list"></div>
@@ -108,7 +109,7 @@
       <section id="view-payables" class="view" hidden>
         <div class="toolbar">
           <div class="spacer"></div>
-          <button type="button" id="new-payable-btn" class="btn btn-primary">+ Add dues (dena hai)</button>
+          <button type="button" id="new-payable-btn" class="btn btn-primary">+ Add credit</button>
         </div>
         <div id="payable-list" class="list"></div>
       </section>
@@ -132,10 +133,10 @@
         <span class="bnav-ico">Rs</span><span>Sales</span>
       </button>
       <button type="button" class="bnav" data-view="receivables">
-        <span class="bnav-ico">↓</span><span>Lena Hai</span>
+        <span class="bnav-ico">↓</span><span>Debit</span>
       </button>
       <button type="button" class="bnav" data-view="payables">
-        <span class="bnav-ico">↑</span><span>Dena Hai</span>
+        <span class="bnav-ico">↑</span><span>Credit</span>
       </button>
       <button type="button" class="bnav" data-view="ledger">
         <span class="bnav-ico">≡</span><span>Exp/Inc</span>
@@ -167,7 +168,11 @@
           </label>
         </div>
         <label class="field" id="salesman-field" hidden><span>Salesman name *</span>
-          <input type="text" id="sale-salesman" placeholder="Salesman name" />
+          <div class="input-row">
+            <input type="text" id="sale-salesman" list="salesman-names" placeholder="Salesman name" />
+            <button type="button" id="add-salesman-btn" class="btn btn-ghost">+ Add</button>
+          </div>
+          <datalist id="salesman-names"></datalist>
         </label>
         <label class="field"><span>Customer name *</span>
           <input type="text" id="sale-customer" required list="customer-names" placeholder="Customer name" />
@@ -266,7 +271,7 @@
   <div id="modal-payable" class="modal" hidden>
     <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <h2 id="payable-modal-title">Add dues (dena hai)</h2>
+        <h2 id="payable-modal-title">Add credit</h2>
         <button type="button" class="modal-x" data-close>✕</button>
       </div>
       <form id="payable-form" class="modal-body form">
@@ -339,6 +344,24 @@
         <button type="button" class="modal-x" data-close>✕</button>
       </div>
       <div class="modal-body" id="sale-detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Salesmen manager -->
+  <div id="modal-salesmen" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>Salesmen</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="salesman-form" class="input-row">
+          <input type="text" id="salesman-name" placeholder="Salesman name" required />
+          <button type="submit" class="btn btn-primary">Add</button>
+        </form>
+        <p id="salesman-form-error" class="form-error" hidden></p>
+        <div id="salesman-list" class="list"></div>
+      </div>
     </div>
   </div>
 

@@ -5,11 +5,12 @@ Works on laptop and phone. Currency: PKR.
 
 ## Features
 
-- **Dashboard** — total sale, cash, bank, loan, debit, credit, dues (lena hai / dena hai) balances with month/year/all-time/custom date filters, sales split by office/dealer/salesman, recent sales.
+- **Dashboard** — total sale, cash, bank, loan, debit, credit, debit dues / credit dues balances with month/year/all-time/custom date filters, sales split by office/dealer/salesman, recent sales.
 - **Sales** — record sales with date, customer, source (office / dealer / salesman), item, total, cash/bank/loan split, notes. Edit, delete, search.
+- **Salesmen** — a saved list of salesmen (seeded with Yasir, Fazal, Usman) to pick from on the sale form, plus a manager to add or delete them. Sales made by a new salesman can be added inline with **+ Add**.
 - **Installments** — mark a sale as installment, pick number of months + first due date; the schedule is generated automatically. Each installment shows pending / partial / paid / overdue.
-- **Dues (Lena Hai)** — what customers still owe you, overdue flag, record payments (cash/bank) against a sale.
-- **Dues (Dena Hai)** — what you owe dealers/suppliers, record payments against them.
+- **Debit (Dues)** — what customers still owe you, overdue flag, record payments (cash/bank) against a sale.
+- **Credit (Dues)** — what you owe dealers/suppliers, record payments against them.
 - **Expenses & Income** — debit / credit entries with Dr, Cr, Net totals.
 - **Login** — single email/password protected by Supabase Row Level Security.
 
@@ -35,8 +36,9 @@ supabase/schema.sql   database tables, RLS, login user
 2. Paste the entire contents of `supabase/schema.sql` and click **Run**
 3. You should see `Success. No rows returned`
 
-This creates 5 tables (`sales`, `installments`, `payables`, `payments`, `ledger_entries`)
-and enables RLS (only a signed-in user can touch data).
+This creates 6 tables (`sales`, `installments`, `payables`, `payments`, `ledger_entries`, `salesmen`)
+and enables RLS (only a signed-in user can touch data). It also seeds the salesmen list
+with **Yasir**, **Fazal** and **Usman** (safe to re-run — existing names are skipped).
 
 **Create the login account — no password is stored in this repository:**
 
@@ -105,7 +107,7 @@ Manual alternative: `npm run build` then `npx serve dist`
 
 1. Open on phone → log in once (stays logged in)
 2. **Sales → + New sale** after each machine sale (tick *Installment* if on a plan)
-3. **Dues (Lena Hai)** → tap a customer → *Record payment* when money comes in
-4. **Dues (Dena Hai)** → add what you owe a dealer, *+ Pay* when you pay
+3. **Debit** → tap a customer → *Record payment* when money comes in
+4. **Credit** → add what you owe a dealer, *+ Pay* when you pay
 5. **Expenses & Income** → Debit/Credit entries for expenses, withdrawals, capital, etc.
 6. **Dashboard** → month/year totals whenever needed

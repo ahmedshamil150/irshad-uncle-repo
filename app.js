@@ -99,6 +99,9 @@ function handleSession(s) {
     $("#app").hidden = false;
     $("#header-user").textContent = user.email || "";
     switchView(state.view, true);
+    loadSalesmen().catch((e) =>
+      toast("Salesmen list unavailable — run the new schema.sql in Supabase.", true)
+    );
   } else {
     $("#app").hidden = true;
     $("#login-screen").hidden = false;
@@ -133,6 +136,7 @@ const state = {
   to: null,
   sales: [],
   salesPay: {},
+  salesmen: [],
   search: "",
   source: "",
   recSearch: "",
@@ -219,8 +223,8 @@ async function loadDashboard() {
       { label: "Loan", value: money(loan), tone: "violet" },
       { label: "Debit", value: money(debit), tone: "violet" },
       { label: "Credit", value: money(credit), tone: "green" },
-      { label: "Dues (Lena Hai)", value: money(recv), tone: "red", sub: recvCount + " sale(s) with balance" },
-      { label: "Dues (Dena Hai)", value: money(payableTotal - payablePaid), tone: "amber" },
+      { label: "Debit dues", value: money(recv), tone: "red", sub: recvCount + " sale(s) with balance" },
+      { label: "Credit dues", value: money(payableTotal - payablePaid), tone: "amber" },
     ];
     $("#dash-cards").innerHTML = cards
       .map(
@@ -457,6 +461,84 @@ async function openSaleDetail(id) {
   }
 }
 
+/* ============ salesmen ============ */
+async function loadSalesmen() {
+  const { data, error } = await sb.from("salesmen").select("*").order("name");
+  if (error) throw error;
+  state.salesmen = data || [];
+  $("#salesman-names").innerHTML = state.salesmen
+    .map((s) => `<option value="${esc(s.name)}"></option>`)
+    .join("");
+  if (!$("#modal-salesmen").hidden) renderSalesmenList();
+}
+
+function renderSalesmenList() {
+  $("#salesman-list").innerHTML = state.salesmen.length
+    ? state.salesmen
+        .map(
+          (s) => `<div class="row" data-id="${s.id}">
+            <div class="row-main"><div class="row-title">${esc(s.name)}</div></div>
+            <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
+          </div>`
+        )
+        .join("")
+    : `<div class="empty">No salesmen yet. Add one above.</div>`;
+
+  $$("#salesman-list .row").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (!e.target.closest('[data-act="del"]')) {
+        const saleOpen = !$("#modal-sale").hidden;
+        if (saleOpen) {
+          $("#sale-salesman").value = el.querySelector(".row-title").textContent;
+          closeModals();
+        }
+        return;
+      }
+      const s = state.salesmen.find((x) => x.id === el.dataset.id);
+      if (!s) return;
+      askConfirm("Delete salesman?", `Delete ${s.name}? Sales already recorded keep this name.`, async () => {
+        busy(true);
+        const { error } = await sb.from("salesmen").delete().eq("id", s.id);
+        busy(false);
+        if (error) return toast(error.message, true);
+        toast("Salesman deleted");
+        loadSalesmen().catch((x) => toast(x.message, true));
+      });
+    });
+  });
+}
+
+async function saveSalesman(e) {
+  e.preventDefault();
+  const errEl = $("#salesman-form-error");
+  errEl.hidden = true;
+  const name = $("#salesman-name").value.trim();
+  if (!name) return;
+
+  busy(true);
+  const { error } = await sb.from("salesmen").insert({ name });
+  busy(false);
+  if (error) {
+    if (error.code === "23505") {
+      errEl.textContent = "That salesman already exists.";
+      errEl.hidden = false;
+      return;
+    }
+    return toast(error.message, true);
+  }
+  toast("Salesman added");
+  $("#salesman-name").value = "";
+  $("#salesman-name").focus();
+  await loadSalesmen();
+}
+
+function openSalesmenModal() {
+  $("#salesman-name").value = "";
+  $("#salesman-form-error").hidden = true;
+  renderSalesmenList();
+  openModal("modal-salesmen");
+}
+
 /* ============ sale form ============ */
 function openSaleForm(sale = null) {
   $("#sale-form").reset();
@@ -639,7 +721,7 @@ async function loadReceivables() {
     const overdue = open.filter((r) => overdueIds.has(r.id)).reduce((s, r) => s + r.bal, 0);
 
     $("#receivable-summary").innerHTML = `
-      <div class="stat tone-red"><div class="stat-label">Total dues (lena hai)</div><div class="stat-value">${money(total)}</div></div>
+      <div class="stat tone-red"><div class="stat-label">Total debit dues</div><div class="stat-value">${money(total)}</div></div>
       <div class="stat tone-amber"><div class="stat-label">Overdue sales</div><div class="stat-value">${open.filter((r) => overdueIds.has(r.id)).length}</div><div class="stat-sub">${money(overdue)} outstanding</div></div>
       <div class="stat tone-brand"><div class="stat-label">Sales with dues</div><div class="stat-value">${open.length}</div></div>`;
 
@@ -662,7 +744,7 @@ async function loadReceivables() {
             </div>
           </div>`)
           .join("")
-      : `<div class="empty">No pending dues (lena hai) — everything is settled.</div>`;
+      : `<div class="empty">No pending debit dues — everything is settled.</div>`;
 
     $$("#receivable-list .row").forEach((el) =>
       el.addEventListener("click", () => openSaleDetail(el.dataset.id))
@@ -705,7 +787,7 @@ async function loadPayables() {
             </div>
           </div>`)
           .join("")
-      : `<div class="empty">No dues (dena hai) yet. Add what you owe dealers/suppliers.</div>`;
+      : `<div class="empty">No credit dues yet. Add what you owe dealers/suppliers.</div>`;
 
     $$("#payable-list .row").forEach((el) => {
       const r = rows.find((x) => x.id === el.dataset.id);
@@ -714,12 +796,12 @@ async function loadPayables() {
         if (act === "pay") openPaymentModal("payable", r.id, `${r.party} — balance ${money(r.bal)}`, r.bal);
         else if (act === "edit") openPayableForm(r);
         else if (act === "del")
-          askConfirm("Delete dues?", `Delete ${r.party} (${money(r.amount)})? Its payments will also be removed.`, async () => {
+          askConfirm("Delete credit?", `Delete ${r.party} (${money(r.amount)})? Its payments will also be removed.`, async () => {
             busy(true);
             const { error } = await sb.from("payables").delete().eq("id", r.id);
             busy(false);
             if (error) return toast(error.message, true);
-            toast("Dues deleted");
+            toast("Credit deleted");
             loadPayables();
           });
         else if (r.bal > 0.009) openPaymentModal("payable", r.id, `${r.party} — balance ${money(r.bal)}`, r.bal);
@@ -735,7 +817,7 @@ function openPayableForm(r = null) {
   $("#payable-form").reset();
   $("#payable-form-error").hidden = true;
   $("#payable-id").value = r?.id || "";
-  $("#payable-modal-title").textContent = r ? "Edit dues" : "Add dues (dena hai)";
+  $("#payable-modal-title").textContent = r ? "Edit credit" : "Add credit";
   $("#payable-date").value = r?.entry_date || todayISO();
   $("#payable-amount").value = r ? num(r.amount) : "";
   $("#payable-party").value = r?.party || "";
@@ -764,7 +846,7 @@ async function savePayable(e) {
       : await sb.from("payables").insert(payload);
     if (error) throw error;
     closeModals();
-    toast(id ? "Dues updated" : "Dues added");
+    toast(id ? "Credit updated" : "Credit added");
     loadPayables();
   } catch (err) {
     errEl.textContent = err.message;
@@ -967,6 +1049,19 @@ function bindEvents() {
 
   /* sales toolbar */
   $("#new-sale-btn").addEventListener("click", () => openSaleForm());
+  $("#manage-salesmen-btn").addEventListener("click", () => openSalesmenModal());
+  $("#salesman-form").addEventListener("submit", saveSalesman);
+  $("#add-salesman-btn").addEventListener("click", async () => {
+    const name = $("#sale-salesman").value.trim();
+    if (!name) return toast("Type a salesman name first.", true);
+    busy(true);
+    const { error } = await sb.from("salesmen").insert({ name });
+    busy(false);
+    if (error && error.code !== "23505") return toast(error.message, true);
+    if (error) return toast("That salesman already exists.", true);
+    toast("Salesman added");
+    await loadSalesmen().catch((x) => toast(x.message, true));
+  });
   $("#sales-search").addEventListener("input", (e) => { state.search = e.target.value; renderSales(); });
   $("#sales-source-filter").addEventListener("change", (e) => { state.source = e.target.value; renderSales(); });
 

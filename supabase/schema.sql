@@ -69,9 +69,16 @@ create table if not exists public.ledger_entries (
   constraint debit_or_credit check (debit > 0 or credit > 0)
 );
 
+create table if not exists public.salesmen (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  name       text not null
+);
+
 -- ============ INDEXES ============
 create index if not exists idx_sales_date     on public.sales (sale_date desc);
 create index if not exists idx_sales_customer on public.sales (lower(customer_name));
+create unique index if not exists idx_salesmen_name on public.salesmen (lower(name));
 create index if not exists idx_inst_sale      on public.installments (sale_id);
 create index if not exists idx_pay_sale       on public.payments (sale_id);
 create index if not exists idx_pay_payable    on public.payments (payable_id);
@@ -101,18 +108,26 @@ alter table public.installments    enable row level security;
 alter table public.payables        enable row level security;
 alter table public.payments        enable row level security;
 alter table public.ledger_entries  enable row level security;
+alter table public.salesmen        enable row level security;
 
 drop policy if exists "auth all" on public.sales;
 drop policy if exists "auth all" on public.installments;
 drop policy if exists "auth all" on public.payables;
 drop policy if exists "auth all" on public.payments;
 drop policy if exists "auth all" on public.ledger_entries;
+drop policy if exists "auth all" on public.salesmen;
 
 create policy "auth all" on public.sales          for all to authenticated using (true) with check (true);
 create policy "auth all" on public.installments   for all to authenticated using (true) with check (true);
 create policy "auth all" on public.payables       for all to authenticated using (true) with check (true);
 create policy "auth all" on public.payments       for all to authenticated using (true) with check (true);
 create policy "auth all" on public.ledger_entries for all to authenticated using (true) with check (true);
+create policy "auth all" on public.salesmen       for all to authenticated using (true) with check (true);
+
+-- ============ SEED: SALESMEN ============
+-- Safe to re-run (skips names that already exist).
+insert into public.salesmen (name) values ('Yasir'), ('Fazal'), ('Usman')
+on conflict do nothing;
 
 -- ============ LOGIN USER ============
 -- No credentials are stored in this file (security).

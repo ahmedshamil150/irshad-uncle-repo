@@ -67,6 +67,9 @@ h1, h2, h3 { margin: 0; }
   border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink);
 }
 .field textarea { resize: vertical; }
+.input-row { display: flex; gap: 8px; align-items: stretch; }
+.input-row > input { flex: 1; min-width: 0; }
+.input-row .btn { flex-shrink: 0; }
 .input:focus, .field input:focus, .field select:focus, .field textarea:focus {
   outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(29,78,216,.12);
 }
