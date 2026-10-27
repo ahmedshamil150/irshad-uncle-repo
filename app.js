@@ -31,6 +31,8 @@ const fmtDate = (iso) => {
   const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 };
+/* office / dealer / salesman → Office / Dealer / Salesman */
+const srcName = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
 const isoOf = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const todayISO = () => isoOf(new Date());
@@ -216,8 +218,8 @@ async function loadDashboard() {
       { label: "Cash", value: money(cash), tone: "green" },
       { label: "Bank", value: money(bank), tone: "brand" },
       { label: "Loan", value: money(loan), tone: "violet" },
-      { label: "Debit dues", value: money(recv), tone: "red", sub: recvCount + " sale(s) with balance" },
-      { label: "Credit dues", value: money(payableTotal - payablePaid), tone: "amber" },
+      { label: "To receive (total)", value: money(recv), tone: "red", sub: `${recvCount} sale${recvCount === 1 ? "" : "s"} still to pay` },
+      { label: "To pay (total)", value: money(payableTotal - payablePaid), tone: "amber", sub: "To dealers & suppliers" },
     ];
     $("#dash-cards").innerHTML = cards
       .map(
@@ -236,7 +238,7 @@ async function loadDashboard() {
     $("#source-split").innerHTML = ["office", "dealer", "salesman"]
       .map(
         (k) => `<div class="src-row" data-src="${k}">
-          <div class="src-head"><span>${k[0].toUpperCase() + k.slice(1)} sale</span><b>${money(src[k])}</b></div>
+          <div class="src-head"><span>${srcName(k)} sale</span><b>${money(src[k])}</b></div>
           <div class="src-track"><div class="src-fill" style="width:${Math.round((src[k] / max) * 100)}%"></div></div>
         </div>`
       )
@@ -250,7 +252,7 @@ async function loadDashboard() {
       ? recent
           .map(
             (r) => `<div class="mini-row" data-sale="${r.id}">
-            <div><div>${esc(r.customer_name)}</div><div class="mini-sub">${fmtDate(r.sale_date)} · ${esc(r.source)}</div></div>
+            <div><div>${esc(r.customer_name)}</div><div class="mini-sub">${fmtDate(r.sale_date)} · ${esc(srcName(r.source))}</div></div>
             <b>${money(r.total_amount)}</b>
           </div>`
           )
@@ -320,14 +322,14 @@ function renderSales() {
           return `<div class="row" data-id="${r.id}">
             <div class="row-main">
               <div class="row-title">${esc(r.customer_name)}
-                <span class="badge badge-${r.source}">${esc(r.source)}</span>
+                <span class="badge badge-${r.source}">${esc(srcName(r.source))}</span>
                 ${r.is_installment ? '<span class="badge badge-pending">Installment</span>' : ""}
               </div>
               <div class="row-sub">${fmtDate(r.sale_date)}${r.item_description ? " · " + esc(r.item_description) : ""}</div>
             </div>
             <div class="row-right">
               <div class="row-amount">${money(r.total_amount)}</div>
-              <div class="row-bal ${bal > 0.009 ? "bal-due" : "bal-ok"}">${bal > 0.009 ? money(bal) + " due" : "Settled"}</div>
+              <div class="row-bal ${bal > 0.009 ? "bal-due" : "bal-ok"}">${bal > 0.009 ? money(bal) + " left" : "Paid in full"}</div>
             </div>
           </div>`;
         })
@@ -394,23 +396,23 @@ async function openSaleDetail(id) {
 
     $("#sale-detail-body").innerHTML = `
       <div class="row-title" style="font-size:18px">${esc(sale.customer_name)}
-        <span class="badge badge-${sale.source}">${esc(sale.source)}</span>
+        <span class="badge badge-${sale.source}">${esc(srcName(sale.source))}</span>
       </div>
       <div class="row-sub" style="margin-bottom:12px">${fmtDate(sale.sale_date)}${sale.item_description ? " · " + esc(sale.item_description) : ""}${sale.salesman_name ? " · " + esc(sale.salesman_name) : ""}</div>
 
       <div class="detail-grid">
         <div class="stat tone-brand"><div class="stat-label">Total sale</div><div class="stat-value">${money(sale.total_amount)}</div></div>
-        <div class="stat tone-green"><div class="stat-label">Paid at sale</div><div class="stat-value">${money(paidAtSale)}</div>
+        <div class="stat tone-green"><div class="stat-label">Paid upfront</div><div class="stat-value">${money(paidAtSale)}</div>
           <div class="stat-sub">Cash ${money(sale.cash_amount)} · Bank ${money(sale.bank_amount)} · Loan ${money(sale.loan_amount)}</div></div>
         <div class="stat tone-violet"><div class="stat-label">Payments received</div><div class="stat-value">${money(received)}</div></div>
-        <div class="stat ${outstanding > 0.009 ? "tone-red" : "tone-green"}"><div class="stat-label">Balance due</div>
+        <div class="stat ${outstanding > 0.009 ? "tone-red" : "tone-green"}"><div class="stat-label">Left to receive</div>
           <div class="stat-value">${money(Math.max(outstanding, 0))}</div></div>
       </div>
 
       ${sale.notes ? `<div class="section-label">Notes</div><p class="row-sub" style="margin:0">${esc(sale.notes)}</p>` : ""}
 
       <div class="detail-actions">
-        <button type="button" class="btn btn-primary btn-sm" id="detail-pay-btn">+ Record payment</button>
+        <button type="button" class="btn btn-primary btn-sm" id="detail-pay-btn">+ Add payment</button>
         <button type="button" class="btn btn-ghost btn-sm" id="detail-edit-btn">Edit</button>
         <button type="button" class="btn btn-danger btn-sm" id="detail-del-btn">Delete</button>
       </div>
@@ -420,8 +422,8 @@ async function openSaleDetail(id) {
       ${paysHtml}`;
 
     $("#detail-pay-btn").onclick = () => {
-      if (outstanding <= 0.009) return toast("This sale is fully settled.", true);
-      openPaymentModal("sale", sale.id, `${sale.customer_name} — balance ${money(outstanding)}`, outstanding);
+      if (outstanding <= 0.009) return toast("This sale is already fully paid.", true);
+      openPaymentModal("sale", sale.id, `${sale.customer_name} — still to receive ${money(outstanding)}`, outstanding);
     };
     $("#detail-edit-btn").onclick = () => openSaleForm(sale);
     $("#detail-del-btn").onclick = () =>
@@ -436,7 +438,7 @@ async function openSaleDetail(id) {
       });
     $$("#sale-detail-body [data-delpay]").forEach((b) =>
       b.addEventListener("click", () =>
-        askConfirm("Delete payment?", "This payment will be removed and the balance recalculated.", async () => {
+        askConfirm("Delete payment?", "This payment will be removed and the amounts updated.", async () => {
           busy(true);
           const { error } = await sb.from("payments").delete().eq("id", b.dataset.delpay);
           busy(false);
@@ -551,6 +553,12 @@ function openSaleForm(sale = null) {
   $("#sale-notes").value = sale?.notes || "";
   $("#inst-count").value = 12;
   $("#inst-first").value = todayISO();
+
+  /* open the optional sections only when there is something to show */
+  const paidAlready = num($("#sale-cash").value) + num($("#sale-bank").value) + num($("#sale-loan").value);
+  $("#sale-pay-disclose").open = paidAlready > 0;
+  $("#sale-more-disclose").open = !!sale && (sale.is_installment || !!sale.notes);
+
   syncSaleForm();
   openModal("modal-sale");
 }
@@ -563,8 +571,10 @@ function syncSaleForm() {
   const paid = num($("#sale-cash").value) + num($("#sale-bank").value) + num($("#sale-loan").value);
   const due = round2(total - paid);
   $("#sale-paid-summary").innerHTML =
-    `Paid now: <b>${money(paid)}</b><br>On account: <b>${money(Math.max(due, 0))}</b>` +
-    (paid > total + 0.009 ? `<br><span style="color:var(--red)">Paid exceeds total!</span>` : "");
+    total <= 0
+      ? `Enter the total above — what is paid and what is left shows here.`
+      : `Paid now: <b>${money(paid)}</b> &nbsp;·&nbsp; Left to pay: <b>${money(Math.max(due, 0))}</b>` +
+        (paid > total + 0.009 ? `<br><span style="color:var(--red)">The paid amount is more than the total — fix it before saving.</span>` : "");
 
   const inst = $("#sale-installment").checked;
   $("#installment-fields").hidden = !inst;
@@ -592,8 +602,8 @@ function renderInstPreview() {
   const first = $("#inst-first").value;
   const el = $("#inst-preview");
 
-  if (financed <= 0) { el.innerHTML = "Nothing left to finance — reduce the paid amount or uncheck installments."; return; }
-  if (!first) { el.innerHTML = "Choose a first due date to preview the schedule."; return; }
+  if (financed <= 0) { el.innerHTML = "Everything is already paid, so there is nothing left to split into installments."; return; }
+  if (!first) { el.innerHTML = "Pick a first due date to see the schedule."; return; }
 
   const rows = buildSchedule(financed, count, first);
   const per = rows[0]?.amount || 0;
@@ -619,14 +629,14 @@ async function saveSale(e) {
   const financed = round2(total - cash - bank - loan);
 
   const fail = (m) => { errEl.textContent = m; errEl.hidden = false; };
-  if (!customer) return fail("Customer name is required.");
-  if (total <= 0) return fail("Total sale must be greater than 0.");
-  if (cash + bank + loan > total + 0.009) return fail("Paid amount cannot exceed the total sale.");
-  if (source === "salesman" && !$("#sale-salesman").value.trim()) return fail("Salesman name is required.");
+  if (!customer) return fail("Please enter the customer name.");
+  if (total <= 0) return fail("Enter the total sale amount.");
+  if (cash + bank + loan > total + 0.009) return fail("The paid amount can't be more than the total sale.");
+  if (source === "salesman" && !$("#sale-salesman").value.trim()) return fail("Please enter the salesman name.");
   if (isInst) {
-    if (financed <= 0) return fail("Installment sale needs an unpaid balance (total minus paid).");
-    if (count < 1 || count > 120) return fail("Number of installments must be between 1 and 120.");
-    if (!first) return fail("First due date is required.");
+    if (financed <= 0) return fail("For installments, leave some amount unpaid (total minus paid).");
+    if (count < 1 || count > 120) return fail("Enter between 1 and 120 installments.");
+    if (!first) return fail("Pick the first due date.");
   }
 
   const payload = {
@@ -675,7 +685,7 @@ async function saveSale(e) {
           if (error) throw error;
         }
       } else if (hasSchedule) {
-        toast("Sale saved — existing installments kept (payments already recorded).");
+        toast("Sale saved. Existing installments kept because payments are already recorded.");
       }
     }
 
@@ -714,9 +724,9 @@ async function loadReceivables() {
     const overdue = open.filter((r) => overdueIds.has(r.id)).reduce((s, r) => s + r.bal, 0);
 
     $("#receivable-summary").innerHTML = `
-      <div class="stat tone-red"><div class="stat-label">Total debit dues</div><div class="stat-value">${money(total)}</div></div>
-      <div class="stat tone-amber"><div class="stat-label">Overdue sales</div><div class="stat-value">${open.filter((r) => overdueIds.has(r.id)).length}</div><div class="stat-sub">${money(overdue)} outstanding</div></div>
-      <div class="stat tone-brand"><div class="stat-label">Sales with dues</div><div class="stat-value">${open.length}</div></div>`;
+      <div class="stat tone-red"><div class="stat-label">Total to receive</div><div class="stat-value">${money(total)}</div></div>
+      <div class="stat tone-amber"><div class="stat-label">Overdue sales</div><div class="stat-value">${open.filter((r) => overdueIds.has(r.id)).length}</div><div class="stat-sub">${money(overdue)} late</div></div>
+      <div class="stat tone-brand"><div class="stat-label">Sales with balance</div><div class="stat-value">${open.length}</div></div>`;
 
     const q = state.recSearch.toLowerCase();
     const rows = open.filter((r) => !q || (r.customer_name || "").toLowerCase().includes(q));
@@ -726,18 +736,18 @@ async function loadReceivables() {
           .map((r) => `<div class="row" data-id="${r.id}">
             <div class="row-main">
               <div class="row-title">${esc(r.customer_name)}
-                <span class="badge badge-${r.source}">${esc(r.source)}</span>
+                <span class="badge badge-${r.source}">${esc(srcName(r.source))}</span>
                 ${overdueIds.has(r.id) ? '<span class="badge badge-overdue">Overdue</span>' : ""}
               </div>
               <div class="row-sub">Sold ${fmtDate(r.sale_date)} · Total ${money(r.total_amount)}</div>
             </div>
             <div class="row-right">
               <div class="row-amount bal-due">${money(r.bal)}</div>
-              <div class="row-bal" style="color:var(--muted)">due</div>
+              <div class="row-bal" style="color:var(--muted)">left</div>
             </div>
           </div>`)
           .join("")
-      : `<div class="empty">No pending debit dues — everything is settled.</div>`;
+      : `<div class="empty">Nothing to receive — every sale is fully paid.</div>`;
 
     $$("#receivable-list .row").forEach((el) =>
       el.addEventListener("click", () => openSaleDetail(el.dataset.id))
@@ -771,7 +781,7 @@ async function loadPayables() {
             </div>
             <div class="row-right">
               <div class="row-amount">${money(r.amount)}</div>
-              <div class="row-bal ${r.bal > 0.009 ? "bal-due" : "bal-ok"}">${r.bal > 0.009 ? money(r.bal) + " due" : "Paid"}</div>
+              <div class="row-bal ${r.bal > 0.009 ? "bal-due" : "bal-ok"}">${r.bal > 0.009 ? money(r.bal) + " left" : "Paid"}</div>
             </div>
             <div class="row-actions">
               ${r.bal > 0.009 ? `<button type="button" class="btn btn-sm btn-primary" data-act="pay">+ Pay</button>` : ""}
@@ -780,24 +790,24 @@ async function loadPayables() {
             </div>
           </div>`)
           .join("")
-      : `<div class="empty">No credit dues yet. Add what you owe dealers/suppliers.</div>`;
+      : `<div class="empty">Nothing to pay yet. Add what you owe a dealer or supplier.</div>`;
 
     $$("#payable-list .row").forEach((el) => {
       const r = rows.find((x) => x.id === el.dataset.id);
       el.addEventListener("click", (e) => {
         const act = e.target.closest("[data-act]")?.dataset.act;
-        if (act === "pay") openPaymentModal("payable", r.id, `${r.party} — balance ${money(r.bal)}`, r.bal);
+        if (act === "pay") openPaymentModal("payable", r.id, `${r.party} — still to pay ${money(r.bal)}`, r.bal);
         else if (act === "edit") openPayableForm(r);
         else if (act === "del")
-          askConfirm("Delete credit?", `Delete ${r.party} (${money(r.amount)})? Its payments will also be removed.`, async () => {
+          askConfirm("Delete this entry?", `Delete ${r.party} (${money(r.amount)})? Payments recorded against it will be removed too.`, async () => {
             busy(true);
             const { error } = await sb.from("payables").delete().eq("id", r.id);
             busy(false);
             if (error) return toast(error.message, true);
-            toast("Credit deleted");
+            toast("Entry deleted");
             loadPayables();
           });
-        else if (r.bal > 0.009) openPaymentModal("payable", r.id, `${r.party} — balance ${money(r.bal)}`, r.bal);
+        else if (r.bal > 0.009) openPaymentModal("payable", r.id, `${r.party} — still to pay ${money(r.bal)}`, r.bal);
         else openPayableForm(r);
       });
     });
@@ -810,7 +820,7 @@ function openPayableForm(r = null) {
   $("#payable-form").reset();
   $("#payable-form-error").hidden = true;
   $("#payable-id").value = r?.id || "";
-  $("#payable-modal-title").textContent = r ? "Edit credit" : "Add credit";
+  $("#payable-modal-title").textContent = r ? "Edit what you owe" : "Add what you owe";
   $("#payable-date").value = r?.entry_date || todayISO();
   $("#payable-amount").value = r ? num(r.amount) : "";
   $("#payable-party").value = r?.party || "";
@@ -829,8 +839,8 @@ async function savePayable(e) {
     amount: round2(num($("#payable-amount").value)),
     notes: $("#payable-notes").value.trim() || null,
   };
-  if (!payload.party) { errEl.textContent = "Party name is required."; errEl.hidden = false; return; }
-  if (payload.amount <= 0) { errEl.textContent = "Amount must be greater than 0."; errEl.hidden = false; return; }
+  if (!payload.party) { errEl.textContent = "Please enter who you owe (dealer / supplier name)."; errEl.hidden = false; return; }
+  if (payload.amount <= 0) { errEl.textContent = "Enter the amount you owe."; errEl.hidden = false; return; }
 
   busy(true);
   try {
@@ -839,7 +849,7 @@ async function savePayable(e) {
       : await sb.from("payables").insert(payload);
     if (error) throw error;
     closeModals();
-    toast(id ? "Credit updated" : "Credit added");
+    toast(id ? "Entry updated" : "Entry added");
     loadPayables();
   } catch (err) {
     errEl.textContent = err.message;
@@ -873,8 +883,8 @@ async function savePayment(e) {
   const amount = round2(num($("#pay-amount").value));
   const max = round2(num($("#pay-amount").max));
 
-  if (amount <= 0) { errEl.textContent = "Amount must be greater than 0."; errEl.hidden = false; return; }
-  if (amount > max + 0.009) { errEl.textContent = `Amount cannot exceed the outstanding balance of ${money(max)}.`; errEl.hidden = false; return; }
+  if (amount <= 0) { errEl.textContent = "Enter how much was paid."; errEl.hidden = false; return; }
+  if (amount > max + 0.009) { errEl.textContent = `That is more than the remaining ${money(max)}.`; errEl.hidden = false; return; }
 
   const payload = {
     paid_at: $("#pay-date").value || todayISO(),
@@ -890,7 +900,7 @@ async function savePayment(e) {
     const { error } = await sb.from("payments").insert(payload);
     if (error) throw error;
     closeModals();
-    toast("Payment recorded");
+    toast("Payment added");
     if (type === "sale") {
       openSaleDetail(id);
       if (state.view === "sales") loadSales();

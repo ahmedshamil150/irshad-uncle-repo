@@ -75,6 +75,31 @@ h1, h2, h3 { margin: 0; }
 }
 .check { display: flex; align-items: center; gap: 9px; margin: 6px 0 12px; font-weight: 600; cursor: pointer; }
 .check input { width: 18px; height: 18px; accent-color: var(--brand); }
+
+/* Plain-English helper text under a field */
+.hint {
+  display: block; margin-top: 5px;
+  font-size: 12px; line-height: 1.4; font-weight: 500; color: var(--muted);
+}
+
+/* Collapsible "optional" sections in the sale form */
+.disclose {
+  background: #f8fafc; border: 1px solid var(--line);
+  border-radius: 12px; margin-bottom: 12px;
+}
+.disclose summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 13px; cursor: pointer; list-style: none;
+  font-size: 13.5px; font-weight: 700; color: var(--ink);
+}
+.disclose summary::-webkit-details-marker { display: none; }
+.disclose summary::after { content: "+"; font-size: 18px; font-weight: 800; color: var(--muted); line-height: 1; }
+.disclose[open] summary { color: var(--brand); }
+.disclose[open] summary::after { content: "–"; }
+.disclose-body { padding: 0 13px 4px; }
+.disclose-body .field:last-child { margin-bottom: 10px; }
+.disclose-body .check { margin-top: 4px; }
+
 .form-error {
   background: var(--red-soft); color: var(--red); border-radius: 8px;
   padding: 9px 12px; font-size: 13.5px; margin: 4px 0 10px;
@@ -233,7 +258,7 @@ h1, h2, h3 { margin: 0; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 12px; }
 .paid-summary {
-  align-self: end; margin-bottom: 14px; font-size: 13px; font-weight: 700;
+  margin-bottom: 14px; font-size: 13px; font-weight: 700;
   background: var(--brand-soft); color: var(--brand); border-radius: 9px; padding: 10px 12px;
 }
 .installment-fields { background: #f8fafc; border: 1px dashed var(--line); border-radius: 12px; padding: 12px; margin-bottom: 14px; }

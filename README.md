@@ -5,12 +5,12 @@ Works on laptop and phone. Currency: PKR.
 
 ## Features
 
-- **Dashboard** — total sale, cash, bank, loan, debit dues / credit dues balances with month/year/all-time/custom date filters, sales split by office/dealer/salesman, recent sales.
-- **Sales** — record sales with date, customer, source (office / dealer / salesman), item, total, cash/bank/loan split, notes. Edit, delete, search.
+- **Dashboard** — total sale, cash, bank, loan, to-receive / to-pay balances with month/year/all-time/custom date filters, sales split by office/dealer/salesman, recent sales.
+- **Sales** — record sales with date, customer, sold through (office / dealer / salesman), item, total, and how it was paid (cash / bank / loan). Payment split, installments and notes live in optional sections that stay collapsed until needed. Edit, delete, search.
 - **Salesmen** — a saved list of salesmen (seeded with Yasir, Fazal, Usman) to pick from on the sale form, plus a manager to add or delete them. Sales made by a new salesman can be added inline with **+ Add**.
-- **Installments** — mark a sale as installment, pick number of months + first due date; the schedule is generated automatically. Each installment shows pending / partial / paid / overdue.
-- **Debit (Dues)** — what customers still owe you, overdue flag, record payments (cash/bank) against a sale.
-- **Credit (Dues)** — what you owe dealers/suppliers, record payments against them.
+- **Installments** — tick *Split what is left unpaid into monthly installments*, pick how many months + first due date; the schedule is generated automatically. Each installment shows pending / partial / paid / overdue.
+- **To receive** — what customers still owe you, overdue flag, add payments (cash/bank) against a sale.
+- **To pay** — what you owe dealers/suppliers, add payments against them.
 - **Login** — single email/password protected by Supabase Row Level Security.
 
 ## Files
@@ -119,7 +119,7 @@ Manual alternative: `npm run build` then `npx serve dist`
 ## Typical day
 
 1. Open on phone → log in once (stays logged in)
-2. **Sales → + New sale** after each machine sale (tick *Installment* if on a plan)
-3. **Debit** → tap a customer → *Record payment* when money comes in
-4. **Credit** → add what you owe a dealer, *+ Pay* when you pay
+2. **Sales → + New sale** after each machine sale (open *Installments & notes* if on a plan)
+3. **To receive** → tap a customer → *+ Add payment* when money comes in
+4. **To pay** → *+ Add what you owe* for a dealer, *+ Pay* when you pay
 5. **Dashboard** → month/year totals whenever needed

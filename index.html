@@ -44,8 +44,8 @@
     <nav class="tabbar" id="tabbar">
       <button type="button" class="tab active" data-view="dashboard">Dashboard</button>
       <button type="button" class="tab" data-view="sales">Sales</button>
-      <button type="button" class="tab" data-view="receivables">Debit</button>
-      <button type="button" class="tab" data-view="payables">Credit</button>
+      <button type="button" class="tab" data-view="receivables">To receive</button>
+      <button type="button" class="tab" data-view="payables">To pay</button>
     </nav>
 
     <main class="main">
@@ -69,7 +69,7 @@
         <div id="dash-cards" class="cards"></div>
 
         <div class="card">
-          <h3 class="card-title">Sales by source</h3>
+          <h3 class="card-title">Where sales came from</h3>
           <div id="source-split" class="source-split"></div>
         </div>
 
@@ -108,7 +108,7 @@
       <section id="view-payables" class="view" hidden>
         <div class="toolbar">
           <div class="spacer"></div>
-          <button type="button" id="new-payable-btn" class="btn btn-primary">+ Add credit</button>
+          <button type="button" id="new-payable-btn" class="btn btn-primary">+ Add what you owe</button>
         </div>
         <div id="payable-list" class="list"></div>
       </section>
@@ -123,10 +123,10 @@
         <span class="bnav-ico">Rs</span><span>Sales</span>
       </button>
       <button type="button" class="bnav" data-view="receivables">
-        <span class="bnav-ico">↓</span><span>Debit</span>
+        <span class="bnav-ico">↓</span><span>To receive</span>
       </button>
       <button type="button" class="bnav" data-view="payables">
-        <span class="bnav-ico">↑</span><span>Credit</span>
+        <span class="bnav-ico">↑</span><span>To pay</span>
       </button>
     </nav>
   </div>
@@ -142,71 +142,93 @@
       </div>
       <form id="sale-form" class="modal-body form">
         <input type="hidden" id="sale-id" />
+
         <div class="grid-2">
           <label class="field"><span>Date *</span>
             <input type="date" id="sale-date" required />
+            <small class="hint">The day the machine was sold.</small>
           </label>
-          <label class="field"><span>Source *</span>
+          <label class="field"><span>Sold through *</span>
             <select id="sale-source" required>
               <option value="office">Office</option>
               <option value="dealer">Dealer</option>
               <option value="salesman">Salesman</option>
             </select>
+            <small class="hint">Office, dealer, or one of our salesmen.</small>
           </label>
         </div>
+
         <label class="field" id="salesman-field" hidden><span>Salesman name *</span>
           <div class="input-row">
             <input type="text" id="sale-salesman" list="salesman-names" placeholder="Salesman name" />
             <button type="button" id="add-salesman-btn" class="btn btn-ghost">+ Add</button>
           </div>
           <datalist id="salesman-names"></datalist>
+          <small class="hint">Pick a name from the list, or tap + Add to save a new one.</small>
         </label>
+
         <label class="field"><span>Customer name *</span>
           <input type="text" id="sale-customer" required list="customer-names" placeholder="Customer name" />
           <datalist id="customer-names"></datalist>
-        </label>
-        <label class="field"><span>Item / machine</span>
-          <input type="text" id="sale-item" placeholder="e.g. Ultrasound machine model XYZ" />
+          <small class="hint">Start typing to reuse a customer's old name.</small>
         </label>
 
-        <div class="grid-3">
+        <div class="grid-2">
+          <label class="field"><span>Item / machine</span>
+            <input type="text" id="sale-item" placeholder="e.g. Ultrasound machine XYZ" />
+            <small class="hint">Optional — what was sold.</small>
+          </label>
           <label class="field"><span>Total sale (Rs) *</span>
             <input type="number" id="sale-total" inputmode="decimal" min="0" step="0.01" required placeholder="0" />
-          </label>
-          <label class="field"><span>Cash (Rs)</span>
-            <input type="number" id="sale-cash" inputmode="decimal" min="0" step="0.01" value="0" />
-          </label>
-          <label class="field"><span>Bank (Rs)</span>
-            <input type="number" id="sale-bank" inputmode="decimal" min="0" step="0.01" value="0" />
+            <small class="hint">Full price of the sale.</small>
           </label>
         </div>
-        <div class="grid-2">
-          <label class="field"><span>Loan (Rs)</span>
-            <input type="number" id="sale-loan" inputmode="decimal" min="0" step="0.01" value="0" />
-          </label>
-          <div class="paid-summary" id="sale-paid-summary"></div>
-        </div>
 
-        <label class="check">
-          <input type="checkbox" id="sale-installment" />
-          <span>Installment sale</span>
-        </label>
+        <div class="paid-summary" id="sale-paid-summary"></div>
 
-        <div id="installment-fields" class="installment-fields" hidden>
-          <div class="grid-2">
-            <label class="field"><span>Number of installments</span>
-              <input type="number" id="inst-count" inputmode="numeric" min="1" max="120" step="1" value="12" />
+        <details class="disclose" id="sale-pay-disclose">
+          <summary>How was it paid? (optional)</summary>
+          <div class="disclose-body">
+            <div class="grid-3">
+              <label class="field"><span>Cash (Rs)</span>
+                <input type="number" id="sale-cash" inputmode="decimal" min="0" step="0.01" value="0" />
+              </label>
+              <label class="field"><span>Bank (Rs)</span>
+                <input type="number" id="sale-bank" inputmode="decimal" min="0" step="0.01" value="0" />
+              </label>
+              <label class="field"><span>Loan (Rs)</span>
+                <input type="number" id="sale-loan" inputmode="decimal" min="0" step="0.01" value="0" />
+              </label>
+            </div>
+            <small class="hint">Leave these at 0 if the customer hasn't paid anything on the spot.</small>
+          </div>
+        </details>
+
+        <details class="disclose" id="sale-more-disclose">
+          <summary>Installments &amp; notes (optional)</summary>
+          <div class="disclose-body">
+            <label class="check">
+              <input type="checkbox" id="sale-installment" />
+              <span>Split what is left unpaid into monthly installments</span>
             </label>
-            <label class="field"><span>First due date</span>
-              <input type="date" id="inst-first" />
+
+            <div id="installment-fields" class="installment-fields" hidden>
+              <div class="grid-2">
+                <label class="field"><span>How many months</span>
+                  <input type="number" id="inst-count" inputmode="numeric" min="1" max="120" step="1" value="12" />
+                </label>
+                <label class="field"><span>First due date</span>
+                  <input type="date" id="inst-first" />
+                </label>
+              </div>
+              <div id="inst-preview" class="inst-preview"></div>
+            </div>
+
+            <label class="field"><span>Notes</span>
+              <textarea id="sale-notes" rows="2" placeholder="Anything else worth remembering"></textarea>
             </label>
           </div>
-          <div id="inst-preview" class="inst-preview"></div>
-        </div>
-
-        <label class="field"><span>Notes</span>
-          <textarea id="sale-notes" rows="2" placeholder="Optional notes"></textarea>
-        </label>
+        </details>
 
         <p id="sale-form-error" class="form-error" hidden></p>
         <div class="modal-actions">
@@ -221,7 +243,7 @@
   <div id="modal-payment" class="modal" hidden>
     <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <h2>Record payment</h2>
+        <h2>Add payment</h2>
         <button type="button" class="modal-x" data-close>✕</button>
       </div>
       <form id="payment-form" class="modal-body form">
@@ -234,9 +256,10 @@
           </label>
           <label class="field"><span>Amount (Rs) *</span>
             <input type="number" id="pay-amount" inputmode="decimal" min="0.01" step="0.01" required placeholder="0" />
+            <small class="hint">How much came in this time.</small>
           </label>
         </div>
-        <label class="field"><span>Method</span>
+        <label class="field"><span>Paid by</span>
           <select id="pay-method">
             <option value="cash">Cash</option>
             <option value="bank">Bank</option>
@@ -258,7 +281,7 @@
   <div id="modal-payable" class="modal" hidden>
     <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
       <div class="modal-head">
-        <h2 id="payable-modal-title">Add credit</h2>
+        <h2 id="payable-modal-title">Add what you owe</h2>
         <button type="button" class="modal-x" data-close>✕</button>
       </div>
       <form id="payable-form" class="modal-body form">
@@ -269,10 +292,12 @@
           </label>
           <label class="field"><span>Amount (Rs) *</span>
             <input type="number" id="payable-amount" inputmode="decimal" min="0.01" step="0.01" required placeholder="0" />
+            <small class="hint">How much you owe in total.</small>
           </label>
         </div>
         <label class="field"><span>Dealer / supplier *</span>
-          <input type="text" id="payable-party" required placeholder="Party name" />
+          <input type="text" id="payable-party" required placeholder="Who do you owe?" />
+          <small class="hint">The dealer or supplier you have to pay.</small>
         </label>
         <label class="field"><span>Notes</span>
           <input type="text" id="payable-notes" placeholder="Optional" />
@@ -280,7 +305,7 @@
         <p id="payable-form-error" class="form-error" hidden></p>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" data-close>Cancel</button>
-          <button type="submit" class="btn btn-primary">Save payable</button>
+          <button type="submit" class="btn btn-primary">Save</button>
         </div>
       </form>
     </div>
