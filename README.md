@@ -40,6 +40,20 @@ This creates 6 tables (`sales`, `installments`, `payables`, `payments`, `ledger_
 and enables RLS (only a signed-in user can touch data). It also seeds the salesmen list
 with **Yasir**, **Fazal** and **Usman** (safe to re-run — existing names are skipped).
 
+> **Connecting with `psql` instead of the SQL Editor?** Newer Supabase projects publish the
+> direct host (`db.<ref>.supabase.co`) as **IPv6-only**, so on an IPv4-only network you get
+> `ENOTFOUND` / `getaddrinfo` failures even though the dashboard works fine. Use the
+> **session pooler** host instead — it has IPv4:
+>
+> ```
+> postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+> ```
+>
+> Note the username carries the project ref (`postgres.<ref>`), and a password containing `@`
+> must be percent-encoded (`%40`) when written in a connection **URL** — but passed literally
+> when set as a `password` property in a driver. The app itself is unaffected: it talks to
+> Supabase over HTTPS, which works on IPv4.
+
 **Create the login account — no password is stored in this repository:**
 
 1. Supabase Dashboard → **Authentication → Users** → **Add user**
