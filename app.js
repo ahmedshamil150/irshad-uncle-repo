@@ -149,7 +149,6 @@ const loaders = {
   sales: loadSales,
   receivables: loadReceivables,
   payables: loadPayables,
-  ledger: loadLedger,
 };
 
 function switchView(view, force = false) {
@@ -176,18 +175,16 @@ function applyRange(q, col) {
 async function loadDashboard() {
   busy(true);
   try {
-    const [salesR, ledgerR, lightR, paysR, payablesR] = await Promise.all([
+    const [salesR, lightR, paysR, payablesR] = await Promise.all([
       applyRange(sb.from("sales").select("*"), "sale_date"),
-      applyRange(sb.from("ledger_entries").select("*"), "entry_date"),
       sb.from("sales").select("id,total_amount,cash_amount,bank_amount,loan_amount"),
       sb.from("payments").select("sale_id,payable_id,amount"),
       sb.from("payables").select("amount"),
     ]);
-    const errs = [salesR, ledgerR, lightR, paysR, payablesR].find((r) => r.error);
+    const errs = [salesR, lightR, paysR, payablesR].find((r) => r.error);
     if (errs) throw errs.error;
 
     const sales = salesR.data || [];
-    const ledger = ledgerR.data || [];
     const light = lightR.data || [];
     const pays = paysR.data || [];
     const payables = payablesR.data || [];
@@ -196,8 +193,6 @@ async function loadDashboard() {
     const cash = sales.reduce((s, r) => s + num(r.cash_amount), 0);
     const bank = sales.reduce((s, r) => s + num(r.bank_amount), 0);
     const loan = sales.reduce((s, r) => s + num(r.loan_amount), 0);
-    const debit = ledger.reduce((s, r) => s + num(r.debit), 0);
-    const credit = ledger.reduce((s, r) => s + num(r.credit), 0);
 
     const paidForSale = {};
     const paidForPayable = {};
@@ -221,8 +216,6 @@ async function loadDashboard() {
       { label: "Cash", value: money(cash), tone: "green" },
       { label: "Bank", value: money(bank), tone: "brand" },
       { label: "Loan", value: money(loan), tone: "violet" },
-      { label: "Debit", value: money(debit), tone: "violet" },
-      { label: "Credit", value: money(credit), tone: "green" },
       { label: "Debit dues", value: money(recv), tone: "red", sub: recvCount + " sale(s) with balance" },
       { label: "Credit dues", value: money(payableTotal - payablePaid), tone: "amber" },
     ];
@@ -913,109 +906,6 @@ async function savePayment(e) {
   }
 }
 
-/* ============ ledger ============ */
-let ledgerRows = [];
-
-async function loadLedger() {
-  busy(true);
-  try {
-    const { data, error } = await sb.from("ledger_entries").select("*").order("entry_date", { ascending: false }).order("created_at", { ascending: false });
-    if (error) throw error;
-    ledgerRows = data || [];
-
-    const dr = ledgerRows.reduce((s, r) => s + num(r.debit), 0);
-    const cr = ledgerRows.reduce((s, r) => s + num(r.credit), 0);
-    $("#ledger-totals").innerHTML = `
-      <span class="lt dr">Dr ${money(dr)}</span>
-      <span class="lt cr">Cr ${money(cr)}</span>
-      <span class="lt">Net ${money(cr - dr)}</span>`;
-
-    $("#ledger-list").innerHTML = ledgerRows.length
-      ? ledgerRows
-          .map((r) => `<div class="row" data-id="${r.id}">
-            <div class="row-main">
-              <div class="row-title">${esc(r.particulars)}</div>
-              <div class="row-sub">${fmtDate(r.entry_date)}${r.notes ? " · " + esc(r.notes) : ""}</div>
-            </div>
-            <div class="row-right">
-              ${num(r.debit) > 0 ? `<div class="row-amount" style="color:var(--violet)">Dr ${money(r.debit)}</div>` : ""}
-              ${num(r.credit) > 0 ? `<div class="row-amount" style="color:var(--green)">Cr ${money(r.credit)}</div>` : ""}
-            </div>
-            <div class="row-actions">
-              <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
-              <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
-            </div>
-          </div>`)
-          .join("")
-      : `<div class="empty">No entries yet.</div>`;
-
-    $$("#ledger-list .row").forEach((el) => {
-      const r = ledgerRows.find((x) => x.id === el.dataset.id);
-      el.addEventListener("click", (e) => {
-        const act = e.target.closest("[data-act]")?.dataset.act;
-        if (act === "del")
-          askConfirm("Delete entry?", `Delete “${r.particulars}”?`, async () => {
-            busy(true);
-            const { error } = await sb.from("ledger_entries").delete().eq("id", r.id);
-            busy(false);
-            if (error) return toast(error.message, true);
-            toast("Entry deleted");
-            loadLedger();
-          });
-        else openLedgerForm(r);
-      });
-    });
-  } finally {
-    busy(false);
-  }
-}
-
-function openLedgerForm(r = null) {
-  $("#ledger-form").reset();
-  $("#ledger-form-error").hidden = true;
-  $("#ledger-id").value = r?.id || "";
-  $("#ledger-modal-title").textContent = r ? "Edit entry" : "New entry";
-  $("#ledger-date").value = r?.entry_date || todayISO();
-  $("#ledger-particulars").value = r?.particulars || "";
-  $("#ledger-debit").value = r ? num(r.debit) : 0;
-  $("#ledger-credit").value = r ? num(r.credit) : 0;
-  $("#ledger-notes").value = r?.notes || "";
-  openModal("modal-ledger");
-}
-
-async function saveLedger(e) {
-  e.preventDefault();
-  const errEl = $("#ledger-form-error");
-  errEl.hidden = true;
-  const id = $("#ledger-id").value;
-  const payload = {
-    entry_date: $("#ledger-date").value || todayISO(),
-    particulars: $("#ledger-particulars").value.trim(),
-    debit: round2(num($("#ledger-debit").value)),
-    credit: round2(num($("#ledger-credit").value)),
-    notes: $("#ledger-notes").value.trim() || null,
-  };
-  if (!payload.particulars) { errEl.textContent = "Details are required."; errEl.hidden = false; return; }
-  if (payload.debit <= 0 && payload.credit <= 0) { errEl.textContent = "Enter a debit or credit amount."; errEl.hidden = false; return; }
-  if (payload.debit > 0 && payload.credit > 0) { errEl.textContent = "Enter either debit OR credit, not both."; errEl.hidden = false; return; }
-
-  busy(true);
-  try {
-    const { error } = id
-      ? await sb.from("ledger_entries").update(payload).eq("id", id)
-      : await sb.from("ledger_entries").insert(payload);
-    if (error) throw error;
-    closeModals();
-    toast(id ? "Entry updated" : "Entry added");
-    loadLedger();
-  } catch (err) {
-    errEl.textContent = err.message;
-    errEl.hidden = false;
-  } finally {
-    busy(false);
-  }
-}
-
 /* ============ events ============ */
 function bindEvents() {
   $("#login-form").addEventListener("submit", login);
@@ -1073,11 +963,9 @@ function bindEvents() {
   $("#sale-installment").addEventListener("change", syncSaleForm);
   $("#sale-source").addEventListener("change", syncSaleForm);
 
-  /* payables / ledger / payment forms */
+  /* payables / payment forms */
   $("#new-payable-btn").addEventListener("click", () => openPayableForm());
   $("#payable-form").addEventListener("submit", savePayable);
-  $("#new-ledger-btn").addEventListener("click", () => openLedgerForm());
-  $("#ledger-form").addEventListener("submit", saveLedger);
   $("#payment-form").addEventListener("submit", savePayment);
 
   /* receivables search */

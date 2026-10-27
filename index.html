@@ -46,7 +46,6 @@
       <button type="button" class="tab" data-view="sales">Sales</button>
       <button type="button" class="tab" data-view="receivables">Debit</button>
       <button type="button" class="tab" data-view="payables">Credit</button>
-      <button type="button" class="tab" data-view="ledger">Expenses &amp; Income</button>
     </nav>
 
     <main class="main">
@@ -114,15 +113,6 @@
         <div id="payable-list" class="list"></div>
       </section>
 
-      <!-- ============ LEDGER ============ -->
-      <section id="view-ledger" class="view" hidden>
-        <div class="toolbar">
-          <div class="ledger-totals" id="ledger-totals"></div>
-          <button type="button" id="new-ledger-btn" class="btn btn-primary">+ New entry</button>
-        </div>
-        <div id="ledger-list" class="list"></div>
-      </section>
-
     </main>
 
     <nav class="bottom-nav" id="bottom-nav">
@@ -137,9 +127,6 @@
       </button>
       <button type="button" class="bnav" data-view="payables">
         <span class="bnav-ico">↑</span><span>Credit</span>
-      </button>
-      <button type="button" class="bnav" data-view="ledger">
-        <span class="bnav-ico">≡</span><span>Exp/Inc</span>
       </button>
     </nav>
   </div>
@@ -294,43 +281,6 @@
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" data-close>Cancel</button>
           <button type="submit" class="btn btn-primary">Save payable</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Ledger form -->
-  <div id="modal-ledger" class="modal" hidden>
-    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
-      <div class="modal-head">
-        <h2 id="ledger-modal-title">New entry</h2>
-        <button type="button" class="modal-x" data-close>✕</button>
-      </div>
-      <form id="ledger-form" class="modal-body form">
-        <input type="hidden" id="ledger-id" />
-        <div class="grid-2">
-          <label class="field"><span>Date *</span>
-            <input type="date" id="ledger-date" required />
-          </label>
-          <label class="field"><span>Details *</span>
-            <input type="text" id="ledger-particulars" required placeholder="e.g. Office expense" />
-          </label>
-        </div>
-        <div class="grid-2">
-          <label class="field"><span>Debit (Rs)</span>
-            <input type="number" id="ledger-debit" inputmode="decimal" min="0" step="0.01" value="0" />
-          </label>
-          <label class="field"><span>Credit (Rs)</span>
-            <input type="number" id="ledger-credit" inputmode="decimal" min="0" step="0.01" value="0" />
-          </label>
-        </div>
-        <label class="field"><span>Notes</span>
-          <input type="text" id="ledger-notes" placeholder="Optional" />
-        </label>
-        <p id="ledger-form-error" class="form-error" hidden></p>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
-          <button type="submit" class="btn btn-primary">Save entry</button>
         </div>
       </form>
     </div>

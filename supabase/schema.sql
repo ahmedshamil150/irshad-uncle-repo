@@ -58,17 +58,6 @@ create table if not exists public.payments (
   )
 );
 
-create table if not exists public.ledger_entries (
-  id          uuid primary key default gen_random_uuid(),
-  created_at  timestamptz not null default now(),
-  entry_date  date not null default current_date,
-  particulars text not null,
-  debit       numeric(14,2) not null default 0 check (debit >= 0),
-  credit      numeric(14,2) not null default 0 check (credit >= 0),
-  notes       text,
-  constraint debit_or_credit check (debit > 0 or credit > 0)
-);
-
 create table if not exists public.salesmen (
   id         uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
@@ -84,7 +73,6 @@ create index if not exists idx_pay_sale       on public.payments (sale_id);
 create index if not exists idx_pay_payable    on public.payments (payable_id);
 create index if not exists idx_pay_date       on public.payments (paid_at);
 create index if not exists idx_payables_date  on public.payables (entry_date desc);
-create index if not exists idx_ledger_date    on public.ledger_entries (entry_date desc);
 
 -- ============ updated_at TRIGGER ============
 create or replace function public.set_updated_at()
@@ -107,21 +95,18 @@ alter table public.sales           enable row level security;
 alter table public.installments    enable row level security;
 alter table public.payables        enable row level security;
 alter table public.payments        enable row level security;
-alter table public.ledger_entries  enable row level security;
 alter table public.salesmen        enable row level security;
 
 drop policy if exists "auth all" on public.sales;
 drop policy if exists "auth all" on public.installments;
 drop policy if exists "auth all" on public.payables;
 drop policy if exists "auth all" on public.payments;
-drop policy if exists "auth all" on public.ledger_entries;
 drop policy if exists "auth all" on public.salesmen;
 
 create policy "auth all" on public.sales          for all to authenticated using (true) with check (true);
 create policy "auth all" on public.installments   for all to authenticated using (true) with check (true);
 create policy "auth all" on public.payables       for all to authenticated using (true) with check (true);
 create policy "auth all" on public.payments       for all to authenticated using (true) with check (true);
-create policy "auth all" on public.ledger_entries for all to authenticated using (true) with check (true);
 create policy "auth all" on public.salesmen       for all to authenticated using (true) with check (true);
 
 -- ============ SEED: SALESMEN ============
