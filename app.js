@@ -33,6 +33,43 @@ const fmtDate = (iso) => {
 };
 /* office / dealer / salesman → Office / Dealer / Salesman */
 const srcName = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
+
+/* ---------- friendly money entry: "5lac", "50hazar", "2cr", "5,00,000" → number ---------- */
+const AMOUNT_UNITS = {
+  crore: 1e7, cr: 1e7,
+  lakh: 1e5, lac: 1e5, lak: 1e5, l: 1e5,
+  hazar: 1e3, hajar: 1e3, hazaar: 1e3, hazzar: 1e3, thousand: 1e3, k: 1e3,
+};
+/* Returns a number, or NaN when the text cannot be read as an amount. */
+function parseAmount(v) {
+  if (typeof v === "number") return Number.isFinite(v) ? v : NaN;
+  let s = String(v ?? "").toLowerCase();
+  if (!s.trim()) return 0;
+  s = s.replace(/₨|pkr|rupees/g, "").replace(/\brs\b/g, "").replace(/[,']/g, "");
+  let rest = s, total = 0, found = false;
+  const re = /(\d+(?:\.\d+)?|\.\d+)\s*([a-z]+)?/g;
+  let m;
+  while ((m = re.exec(s))) {
+    let mult = 1;
+    if (m[2]) {
+      const unit = m[2].replace(/s$/, "");   /* lacs → lac, crores → crore, lakhs → lakh */
+      if (!(unit in AMOUNT_UNITS)) return NaN;
+      mult = AMOUNT_UNITS[unit];
+    }
+    total += parseFloat(m[1]) * mult;
+    found = true;
+    rest = rest.replace(m[0], " ");
+  }
+  if (!found || rest.replace(/[\s.]+/g, "")) return NaN;
+  return round2(total);
+}
+/* Safe read for live previews (garbage shows as 0, save-time validation catches it). */
+const amt = (v) => { const n = parseAmount(v); return Number.isNaN(n) ? 0 : n; };
+const AMOUNT_HINT = "Couldn't read that amount — try 500000, 5lac, 50hazar or 2cr.";
+
+/* several item lines are stored as one newline-separated text column */
+const itemsText = (s) =>
+  String(s || "").split("\n").map((x) => x.trim()).filter(Boolean).join(" · ");
 const isoOf = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const todayISO = () => isoOf(new Date());
@@ -142,6 +179,9 @@ const state = {
   search: "",
   source: "",
   recSearch: "",
+  loanSearch: "",
+  loanRows: [],
+  payMax: 0,
   returnTo: null,
   returnSaleId: null,
 };
@@ -149,6 +189,7 @@ const state = {
 const loaders = {
   dashboard: loadDashboard,
   sales: loadSales,
+  loans: loadLoans,
   receivables: loadReceivables,
   payables: loadPayables,
 };
@@ -217,10 +258,13 @@ async function loadDashboard() {
       { label: "Total sale", value: money(totalSale), tone: "brand", sub: rangeLabel() },
       { label: "Cash", value: money(cash), tone: "green" },
       { label: "Bank", value: money(bank), tone: "brand" },
-      { label: "Loan", value: money(loan), tone: "violet" },
-      { label: "To receive (total)", value: money(recv), tone: "red", sub: `${recvCount} sale${recvCount === 1 ? "" : "s"} still to pay` },
-      { label: "To pay (total)", value: money(payableTotal - payablePaid), tone: "amber", sub: "To dealers & suppliers" },
     ];
+    /* loan is no longer an option on the sale form — only show it while old sales still carry one */
+    if (loan > 0) cards.push({ label: "Loan", value: money(loan), tone: "violet" });
+    cards.push(
+      { label: "To receive (total)", value: money(recv), tone: "red", sub: `${recvCount} sale${recvCount === 1 ? "" : "s"} still to pay` },
+      { label: "To pay (total)", value: money(payableTotal - payablePaid), tone: "amber", sub: "To dealers & suppliers" }
+    );
     $("#dash-cards").innerHTML = cards
       .map(
         (c) => `<div class="stat tone-${c.tone}">
@@ -325,7 +369,7 @@ function renderSales() {
                 <span class="badge badge-${r.source}">${esc(srcName(r.source))}</span>
                 ${r.is_installment ? '<span class="badge badge-pending">Installment</span>' : ""}
               </div>
-              <div class="row-sub">${fmtDate(r.sale_date)}${r.item_description ? " · " + esc(r.item_description) : ""}</div>
+              <div class="row-sub">${fmtDate(r.sale_date)}${r.item_description ? " · " + esc(itemsText(r.item_description)) : ""}</div>
             </div>
             <div class="row-right">
               <div class="row-amount">${money(r.total_amount)}</div>
@@ -398,7 +442,7 @@ async function openSaleDetail(id) {
       <div class="row-title" style="font-size:18px">${esc(sale.customer_name)}
         <span class="badge badge-${sale.source}">${esc(srcName(sale.source))}</span>
       </div>
-      <div class="row-sub" style="margin-bottom:12px">${fmtDate(sale.sale_date)}${sale.item_description ? " · " + esc(sale.item_description) : ""}${sale.salesman_name ? " · " + esc(sale.salesman_name) : ""}</div>
+      <div class="row-sub" style="margin-bottom:12px">${fmtDate(sale.sale_date)}${sale.item_description ? " · " + esc(itemsText(sale.item_description)) : ""}${sale.salesman_name ? " · " + esc(sale.salesman_name) : ""}</div>
 
       <div class="detail-grid">
         <div class="stat tone-brand"><div class="stat-label">Total sale</div><div class="stat-value">${money(sale.total_amount)}</div></div>
@@ -544,10 +588,10 @@ function openSaleForm(sale = null) {
   $("#sale-source").value = sale?.source || "office";
   $("#sale-salesman").value = sale?.salesman_name || "";
   $("#sale-customer").value = sale?.customer_name || "";
-  $("#sale-item").value = sale?.item_description || "";
+  renderItems(sale?.item_description);
   $("#sale-total").value = sale ? num(sale.total_amount) : "";
-  $("#sale-cash").value = sale ? num(sale.cash_amount) : 0;
-  $("#sale-bank").value = sale ? num(sale.bank_amount) : 0;
+  $("#sale-cash").value = sale && num(sale.cash_amount) ? num(sale.cash_amount) : "";
+  $("#sale-bank").value = sale && num(sale.bank_amount) ? num(sale.bank_amount) : "";
   $("#sale-loan").value = sale ? num(sale.loan_amount) : 0;
   $("#sale-installment").checked = !!sale?.is_installment;
   $("#sale-notes").value = sale?.notes || "";
@@ -555,7 +599,7 @@ function openSaleForm(sale = null) {
   $("#inst-first").value = todayISO();
 
   /* open the optional sections only when there is something to show */
-  const paidAlready = num($("#sale-cash").value) + num($("#sale-bank").value) + num($("#sale-loan").value);
+  const paidAlready = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-loan").value);
   $("#sale-pay-disclose").open = paidAlready > 0;
   $("#sale-more-disclose").open = !!sale && (sale.is_installment || !!sale.notes);
 
@@ -563,12 +607,31 @@ function openSaleForm(sale = null) {
   openModal("modal-sale");
 }
 
+/* ---- item lines (one per machine/item) ---- */
+function itemRow(value = "") {
+  const row = document.createElement("div");
+  row.className = "item-row";
+  row.innerHTML =
+    '<input type="text" class="item-input" placeholder="e.g. Ultrasound machine XYZ" />' +
+    '<button type="button" class="item-del" title="Remove item" aria-label="Remove item">✕</button>';
+  row.querySelector("input").value = value;
+  return row;
+}
+function renderItems(stored) {
+  const box = $("#sale-items");
+  box.innerHTML = "";
+  const list = String(stored || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  (list.length ? list : [""]).forEach((v) => box.appendChild(itemRow(v)));
+}
+const itemValues = () =>
+  $$("#sale-items .item-input").map((i) => i.value.trim()).filter(Boolean);
+
 function syncSaleForm() {
   const src = $("#sale-source").value;
   $("#salesman-field").hidden = src !== "salesman";
 
-  const total = num($("#sale-total").value);
-  const paid = num($("#sale-cash").value) + num($("#sale-bank").value) + num($("#sale-loan").value);
+  const total = amt($("#sale-total").value);
+  const paid = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-loan").value);
   const due = round2(total - paid);
   $("#sale-paid-summary").innerHTML =
     total <= 0
@@ -586,17 +649,17 @@ function buildSchedule(financed, count, firstDue) {
   const rows = [];
   let remaining = round2(financed);
   for (let i = 1; i <= count; i++) {
-    const amt = i === count ? round2(remaining) : per;
-    if (amt <= 0) break;
-    rows.push({ no: i, due: addMonths(firstDue, i - 1), amount: amt });
-    remaining = round2(remaining - amt);
+    const rowAmt = i === count ? round2(remaining) : per;
+    if (rowAmt <= 0) break;
+    rows.push({ no: i, due: addMonths(firstDue, i - 1), amount: rowAmt });
+    remaining = round2(remaining - rowAmt);
   }
   return rows;
 }
 
 function renderInstPreview() {
-  const total = num($("#sale-total").value);
-  const paid = num($("#sale-cash").value) + num($("#sale-bank").value) + num($("#sale-loan").value);
+  const total = amt($("#sale-total").value);
+  const paid = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-loan").value);
   const financed = round2(total - paid);
   const count = Math.max(1, Math.min(120, parseInt($("#inst-count").value, 10) || 0));
   const first = $("#inst-first").value;
@@ -619,17 +682,24 @@ async function saveSale(e) {
   const id = $("#sale-id").value;
   const source = $("#sale-source").value;
   const customer = $("#sale-customer").value.trim();
-  const total = round2(num($("#sale-total").value));
-  const cash = round2(num($("#sale-cash").value));
-  const bank = round2(num($("#sale-bank").value));
-  const loan = round2(num($("#sale-loan").value));
+  const totalRaw = $("#sale-total").value.trim();
+  const totalN = parseAmount(totalRaw);
+  const cashN = parseAmount($("#sale-cash").value);
+  const bankN = parseAmount($("#sale-bank").value);
+  const loanN = parseAmount($("#sale-loan").value);
   const isInst = $("#sale-installment").checked;
   const count = parseInt($("#inst-count").value, 10) || 0;
   const first = $("#inst-first").value;
-  const financed = round2(total - cash - bank - loan);
 
   const fail = (m) => { errEl.textContent = m; errEl.hidden = false; };
   if (!customer) return fail("Please enter the customer name.");
+  if (!totalRaw) return fail("Enter the total sale amount.");
+  if ([totalN, cashN, bankN, loanN].some(Number.isNaN)) return fail(AMOUNT_HINT);
+  const total = round2(totalN);
+  const cash = round2(cashN);
+  const bank = round2(bankN);
+  const loan = round2(loanN);
+  const financed = round2(total - cash - bank - loan);
   if (total <= 0) return fail("Enter the total sale amount.");
   if (cash + bank + loan > total + 0.009) return fail("The paid amount can't be more than the total sale.");
   if (source === "salesman" && !$("#sale-salesman").value.trim()) return fail("Please enter the salesman name.");
@@ -644,7 +714,7 @@ async function saveSale(e) {
     customer_name: customer,
     source,
     salesman_name: source === "salesman" ? $("#sale-salesman").value.trim() : null,
-    item_description: $("#sale-item").value.trim() || null,
+    item_description: itemValues().join("\n") || null,
     total_amount: total,
     cash_amount: cash,
     bank_amount: bank,
@@ -833,12 +903,14 @@ async function savePayable(e) {
   const errEl = $("#payable-form-error");
   errEl.hidden = true;
   const id = $("#payable-id").value;
+  const amountN = parseAmount($("#payable-amount").value);
   const payload = {
     entry_date: $("#payable-date").value || todayISO(),
     party: $("#payable-party").value.trim(),
-    amount: round2(num($("#payable-amount").value)),
+    amount: round2(amountN),
     notes: $("#payable-notes").value.trim() || null,
   };
+  if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
   if (!payload.party) { errEl.textContent = "Please enter who you owe (dealer / supplier name)."; errEl.hidden = false; return; }
   if (payload.amount <= 0) { errEl.textContent = "Enter the amount you owe."; errEl.hidden = false; return; }
 
@@ -859,6 +931,156 @@ async function savePayable(e) {
   }
 }
 
+/* ============ personal loans (money we gave out) ============ */
+async function loadLoans() {
+  busy(true);
+  try {
+    const { data, error } = await sb
+      .from("personal_loans")
+      .select("*")
+      .order("loan_date", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    state.loanRows = data || [];
+    renderLoans();
+  } finally {
+    busy(false);
+  }
+}
+
+function renderLoans() {
+    const rows = state.loanRows;
+    const today = todayISO();
+
+    $("#loan-names").innerHTML = [...new Set(rows.map((r) => r.person))]
+      .map((n) => `<option value="${esc(n)}"></option>`)
+      .join("");
+
+    const open = rows.filter((r) => !r.returned_at);
+    const back = rows.filter((r) => r.returned_at);
+    const late = open.filter((r) => r.due_date && r.due_date < today);
+    const outTotal = open.reduce((s, r) => s + num(r.amount), 0);
+    const allTotal = rows.reduce((s, r) => s + num(r.amount), 0);
+    const lateTotal = late.reduce((s, r) => s + num(r.amount), 0);
+
+    $("#loan-summary").innerHTML = `
+      <div class="stat tone-red"><div class="stat-label">Still to get back</div><div class="stat-value">${money(outTotal)}</div><div class="stat-sub">${open.length} loan${open.length === 1 ? "" : "s"} out</div></div>
+      <div class="stat tone-amber"><div class="stat-label">Past the due date</div><div class="stat-value">${late.length}</div><div class="stat-sub">${money(lateTotal)} late</div></div>
+      <div class="stat tone-brand"><div class="stat-label">Given out (all)</div><div class="stat-value">${money(allTotal)}</div><div class="stat-sub">${back.length} returned</div></div>`;
+
+    const q = state.loanSearch.toLowerCase();
+    const shown = rows.filter((r) => !q || (r.person || "").toLowerCase().includes(q));
+
+    $("#loan-list").innerHTML = shown.length
+      ? shown
+          .map((r) => {
+            const isBack = !!r.returned_at;
+            const isLate = !isBack && r.due_date && r.due_date < today;
+            return `<div class="row" data-id="${r.id}">
+            <div class="row-main">
+              <div class="row-title">${esc(r.person)}
+                ${isBack ? '<span class="badge badge-paid">Returned</span>' : isLate ? '<span class="badge badge-overdue">Late</span>' : ""}
+              </div>
+              <div class="row-sub">Given ${fmtDate(r.loan_date)}${r.due_date ? " · Back by " + fmtDate(r.due_date) : ""}${isBack ? " · Back on " + fmtDate(String(r.returned_at).slice(0, 10)) : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
+            </div>
+            <div class="row-right">
+              <div class="row-amount ${isBack ? "" : "bal-due"}">${money(r.amount)}</div>
+              <div class="row-bal" style="color:var(--muted)">${isBack ? "returned" : "to get back"}</div>
+            </div>
+            <div class="row-actions">
+              ${isBack
+                ? `<button type="button" class="btn btn-sm btn-ghost" data-act="undo">↩ Not back yet</button>`
+                : `<button type="button" class="btn btn-sm btn-primary" data-act="back">✓ Returned</button>`}
+              <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
+              <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
+            </div>
+          </div>`;
+          })
+          .join("")
+      : `<div class="empty">${q ? "No matching name." : "No loans recorded yet. Tap “+ New loan” when you give money to someone."}</div>`;
+
+    $$("#loan-list .row").forEach((el) => {
+      const r = rows.find((x) => x.id === el.dataset.id);
+      el.addEventListener("click", (e) => {
+        const act = e.target.closest("[data-act]")?.dataset.act;
+        if (act === "back") setLoanReturned(r, true);
+        else if (act === "undo") setLoanReturned(r, false);
+        else if (act === "edit") openLoanForm(r);
+        else if (act === "del")
+          askConfirm("Delete this loan?", `Delete the ${money(r.amount)} loan to ${r.person}?`, async () => {
+            busy(true);
+            const { error } = await sb.from("personal_loans").delete().eq("id", r.id);
+            busy(false);
+            if (error) return toast(error.message, true);
+            toast("Loan deleted");
+            loadLoans();
+          });
+        else openLoanForm(r);
+      });
+    });
+}
+
+async function setLoanReturned(r, returned) {
+  busy(true);
+  const { error } = await sb
+    .from("personal_loans")
+    .update({ returned_at: returned ? new Date().toISOString() : null })
+    .eq("id", r.id);
+  busy(false);
+  if (error) return toast(error.message, true);
+  toast(returned ? "Marked as returned" : "Back on the list to get back");
+  loadLoans();
+}
+
+function openLoanForm(r = null) {
+  $("#loan-form").reset();
+  $("#loan-form-error").hidden = true;
+  $("#loan-id").value = r?.id || "";
+  $("#loan-modal-title").textContent = r ? "Edit loan" : "New loan";
+  $("#loan-date").value = r?.loan_date || todayISO();
+  $("#loan-person").value = r?.person || "";
+  $("#loan-amount").value = r ? num(r.amount) : "";
+  $("#loan-due").value = r?.due_date || "";
+  $("#loan-notes").value = r?.notes || "";
+  openModal("modal-loan");
+}
+
+async function saveLoan(e) {
+  e.preventDefault();
+  const errEl = $("#loan-form-error");
+  errEl.hidden = true;
+  const id = $("#loan-id").value;
+  const person = $("#loan-person").value.trim();
+  const amountN = parseAmount($("#loan-amount").value);
+  const payload = {
+    loan_date: $("#loan-date").value || todayISO(),
+    person,
+    amount: round2(amountN),
+    due_date: $("#loan-due").value || null,
+    notes: $("#loan-notes").value.trim() || null,
+  };
+  if (!person) { errEl.textContent = "Please enter who you gave the money to."; errEl.hidden = false; return; }
+  if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
+  if (payload.amount <= 0) { errEl.textContent = "Enter how much you gave."; errEl.hidden = false; return; }
+  if (payload.due_date && payload.due_date < payload.loan_date) { errEl.textContent = "“Back by” is before the day the money was given."; errEl.hidden = false; return; }
+
+  busy(true);
+  try {
+    const { error } = id
+      ? await sb.from("personal_loans").update(payload).eq("id", id)
+      : await sb.from("personal_loans").insert(payload);
+    if (error) throw error;
+    closeModals();
+    toast(id ? "Loan updated" : "Loan added");
+    loadLoans();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    busy(false);
+  }
+}
+
 /* ============ payments ============ */
 function openPaymentModal(type, id, context, max) {
   state.returnTo = $$(".modal").find((m) => !m.hidden)?.id || null;
@@ -869,7 +1091,7 @@ function openPaymentModal(type, id, context, max) {
   $("#pay-target-id").value = id;
   $("#pay-context").textContent = context;
   $("#pay-date").value = todayISO();
-  $("#pay-amount").max = max;
+  state.payMax = max;
   $("#pay-amount").placeholder = "Up to " + money(max);
   openModal("modal-payment");
 }
@@ -880,9 +1102,11 @@ async function savePayment(e) {
   errEl.hidden = true;
   const type = $("#pay-target-type").value;
   const id = $("#pay-target-id").value;
-  const amount = round2(num($("#pay-amount").value));
-  const max = round2(num($("#pay-amount").max));
+  const amountN = parseAmount($("#pay-amount").value);
+  const max = round2(num(state.payMax));
 
+  if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
+  const amount = round2(amountN);
   if (amount <= 0) { errEl.textContent = "Enter how much was paid."; errEl.hidden = false; return; }
   if (amount > max + 0.009) { errEl.textContent = `That is more than the remaining ${money(max)}.`; errEl.hidden = false; return; }
 
@@ -972,6 +1196,47 @@ function bindEvents() {
   );
   $("#sale-installment").addEventListener("change", syncSaleForm);
   $("#sale-source").addEventListener("change", syncSaleForm);
+
+  /* item lines */
+  $("#add-item-btn").addEventListener("click", () => {
+    const row = itemRow();
+    $("#sale-items").appendChild(row);
+    row.querySelector("input").focus();
+  });
+  $("#sale-items").addEventListener("click", (e) => {
+    const del = e.target.closest(".item-del");
+    if (del) del.closest(".item-row").remove();
+  });
+  $("#sale-items").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.classList.contains("item-input")) {
+      e.preventDefault();
+      const row = itemRow();
+      $("#sale-items").appendChild(row);
+      row.querySelector("input").focus();
+    }
+  });
+
+  /* money fields: focus selects everything, blur turns 5lac into 500000 */
+  document.addEventListener("focusin", (e) => {
+    if (e.target.matches?.(".amt")) e.target.select();
+  });
+  document.addEventListener("focusout", (e) => {
+    const el = e.target;
+    if (!el.matches?.(".amt")) return;
+    const raw = el.value.trim();
+    if (!raw) return;
+    const n = parseAmount(raw);
+    if (Number.isNaN(n)) return toast(AMOUNT_HINT, true);
+    el.value = String(n);
+  });
+
+  /* loans */
+  $("#new-loan-btn").addEventListener("click", () => openLoanForm());
+  $("#loan-form").addEventListener("submit", saveLoan);
+  $("#loan-search").addEventListener("input", (e) => {
+    state.loanSearch = e.target.value;
+    renderLoans();
+  });
 
   /* payables / payment forms */
   $("#new-payable-btn").addEventListener("click", () => openPayableForm());

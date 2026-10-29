@@ -100,6 +100,23 @@ h1, h2, h3 { margin: 0; }
 .disclose-body .field:last-child { margin-bottom: 10px; }
 .disclose-body .check { margin-top: 4px; }
 
+/* Item lines on the sale form */
+.item-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 9px; }
+.item-list:empty { margin-bottom: 0; }
+.item-row { display: flex; gap: 8px; align-items: stretch; }
+.item-row input {
+  flex: 1; min-width: 0; padding: 11px 12px; font-size: 15px; font-family: inherit;
+  border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink);
+}
+.item-row input:focus {
+  outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(29,78,216,.12);
+}
+.item-del {
+  border: 0; background: var(--red-soft); color: var(--red); flex-shrink: 0;
+  border-radius: 10px; width: 44px; cursor: pointer; font-size: 14px;
+}
+.item-add { margin-bottom: 3px; }
+
 .form-error {
   background: var(--red-soft); color: var(--red); border-radius: 8px;
   padding: 9px 12px; font-size: 13.5px; margin: 4px 0 10px;

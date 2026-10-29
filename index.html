@@ -44,6 +44,7 @@
     <nav class="tabbar" id="tabbar">
       <button type="button" class="tab active" data-view="dashboard">Dashboard</button>
       <button type="button" class="tab" data-view="sales">Sales</button>
+      <button type="button" class="tab" data-view="loans">Loans</button>
       <button type="button" class="tab" data-view="receivables">To receive</button>
       <button type="button" class="tab" data-view="payables">To pay</button>
     </nav>
@@ -95,6 +96,16 @@
         <div id="sales-list" class="list"></div>
       </section>
 
+      <!-- ============ LOANS (money we gave out) ============ -->
+      <section id="view-loans" class="view" hidden>
+        <div id="loan-summary" class="cards cards-tight"></div>
+        <div class="toolbar">
+          <input type="search" id="loan-search" class="input" placeholder="Search name…" />
+          <button type="button" id="new-loan-btn" class="btn btn-primary">+ New loan</button>
+        </div>
+        <div id="loan-list" class="list"></div>
+      </section>
+
       <!-- ============ RECEIVABLES ============ -->
       <section id="view-receivables" class="view" hidden>
         <div id="receivable-summary" class="cards cards-tight"></div>
@@ -122,6 +133,9 @@
       <button type="button" class="bnav" data-view="sales">
         <span class="bnav-ico">Rs</span><span>Sales</span>
       </button>
+      <button type="button" class="bnav" data-view="loans">
+        <span class="bnav-ico">↗</span><span>Loans</span>
+      </button>
       <button type="button" class="bnav" data-view="receivables">
         <span class="bnav-ico">↓</span><span>To receive</span>
       </button>
@@ -142,6 +156,7 @@
       </div>
       <form id="sale-form" class="modal-body form">
         <input type="hidden" id="sale-id" />
+        <input type="hidden" id="sale-loan" value="0" />
 
         <div class="grid-2">
           <label class="field"><span>Date *</span>
@@ -173,34 +188,31 @@
           <small class="hint">Start typing to reuse a customer's old name.</small>
         </label>
 
-        <div class="grid-2">
-          <label class="field"><span>Item / machine</span>
-            <input type="text" id="sale-item" placeholder="e.g. Ultrasound machine XYZ" />
-            <small class="hint">Optional — what was sold.</small>
-          </label>
-          <label class="field"><span>Total sale (Rs) *</span>
-            <input type="number" id="sale-total" inputmode="decimal" min="0" step="0.01" required placeholder="0" />
-            <small class="hint">Full price of the sale.</small>
-          </label>
+        <div class="field"><span>Items / machines</span>
+          <div id="sale-items" class="item-list"></div>
+          <button type="button" id="add-item-btn" class="btn btn-sm btn-ghost item-add">+ Add item</button>
+          <small class="hint">One line per item — add as many as this sale has.</small>
         </div>
+
+        <label class="field"><span>Total sale (Rs) *</span>
+          <input type="text" id="sale-total" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 5lac" />
+          <small class="hint">Type it however you like: 500000, 5lac, 50hazar or 0.5cr — it converts.</small>
+        </label>
 
         <div class="paid-summary" id="sale-paid-summary"></div>
 
         <details class="disclose" id="sale-pay-disclose">
           <summary>How was it paid? (optional)</summary>
           <div class="disclose-body">
-            <div class="grid-3">
+            <div class="grid-2">
               <label class="field"><span>Cash (Rs)</span>
-                <input type="number" id="sale-cash" inputmode="decimal" min="0" step="0.01" value="0" />
+                <input type="text" id="sale-cash" class="amt" inputmode="decimal" autocomplete="off" placeholder="0" />
               </label>
               <label class="field"><span>Bank (Rs)</span>
-                <input type="number" id="sale-bank" inputmode="decimal" min="0" step="0.01" value="0" />
-              </label>
-              <label class="field"><span>Loan (Rs)</span>
-                <input type="number" id="sale-loan" inputmode="decimal" min="0" step="0.01" value="0" />
+                <input type="text" id="sale-bank" class="amt" inputmode="decimal" autocomplete="off" placeholder="0" />
               </label>
             </div>
-            <small class="hint">Leave these at 0 if the customer hasn't paid anything on the spot.</small>
+            <small class="hint">Leave these empty if nothing was paid on the spot. Amounts can be written as 5lac, 50hazar or 2cr.</small>
           </div>
         </details>
 
@@ -255,8 +267,8 @@
             <input type="date" id="pay-date" required />
           </label>
           <label class="field"><span>Amount (Rs) *</span>
-            <input type="number" id="pay-amount" inputmode="decimal" min="0.01" step="0.01" required placeholder="0" />
-            <small class="hint">How much came in this time.</small>
+            <input type="text" id="pay-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 50000" />
+            <small class="hint">How much came in — 50000, 50hazar or 0.5lac all work.</small>
           </label>
         </div>
         <label class="field"><span>Paid by</span>
@@ -291,8 +303,8 @@
             <input type="date" id="payable-date" required />
           </label>
           <label class="field"><span>Amount (Rs) *</span>
-            <input type="number" id="payable-amount" inputmode="decimal" min="0.01" step="0.01" required placeholder="0" />
-            <small class="hint">How much you owe in total.</small>
+            <input type="text" id="payable-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 2lac" />
+            <small class="hint">How much you owe — 200000, 2lac or 200hazar all work.</small>
           </label>
         </div>
         <label class="field"><span>Dealer / supplier *</span>
@@ -303,6 +315,46 @@
           <input type="text" id="payable-notes" placeholder="Optional" />
         </label>
         <p id="payable-form-error" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Personal loan form -->
+  <div id="modal-loan" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="loan-modal-title">New loan</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <form id="loan-form" class="modal-body form">
+        <input type="hidden" id="loan-id" />
+        <div class="grid-2">
+          <label class="field"><span>Given on *</span>
+            <input type="date" id="loan-date" required />
+            <small class="hint">The day you gave the money.</small>
+          </label>
+          <label class="field"><span>Back by</span>
+            <input type="date" id="loan-due" />
+            <small class="hint">Optional — when he will give it back.</small>
+          </label>
+        </div>
+        <label class="field"><span>Gave to *</span>
+          <input type="text" id="loan-person" required list="loan-names" placeholder="Name of the person" />
+          <datalist id="loan-names"></datalist>
+          <small class="hint">Who you gave the money to.</small>
+        </label>
+        <label class="field"><span>Amount (Rs) *</span>
+          <input type="text" id="loan-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 5lac" />
+          <small class="hint">How much you gave — 500000, 5lac, 50hazar or 2cr all work.</small>
+        </label>
+        <label class="field"><span>Notes</span>
+          <input type="text" id="loan-notes" placeholder="Optional" />
+        </label>
+        <p id="loan-form-error" class="form-error" hidden></p>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" data-close>Cancel</button>
           <button type="submit" class="btn btn-primary">Save</button>

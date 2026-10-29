@@ -64,15 +64,28 @@ create table if not exists public.salesmen (
   name       text not null
 );
 
+-- Personal loans: money WE gave to someone (they pay us back).
+create table if not exists public.personal_loans (
+  id          uuid primary key default gen_random_uuid(),
+  created_at  timestamptz not null default now(),
+  loan_date   date not null default current_date,
+  person      text not null,
+  amount      numeric(14,2) not null check (amount > 0),
+  due_date    date,
+  returned_at timestamptz,
+  notes       text
+);
+
 -- ============ INDEXES ============
 create index if not exists idx_sales_date     on public.sales (sale_date desc);
 create index if not exists idx_sales_customer on public.sales (lower(customer_name));
-create unique index if not exists idx_salesmen_name on public.salesmen (lower(name));
+create unique index if not exists idx_salesmen_name  on public.salesmen (lower(name));
 create index if not exists idx_inst_sale      on public.installments (sale_id);
 create index if not exists idx_pay_sale       on public.payments (sale_id);
 create index if not exists idx_pay_payable    on public.payments (payable_id);
 create index if not exists idx_pay_date       on public.payments (paid_at);
 create index if not exists idx_payables_date  on public.payables (entry_date desc);
+create index if not exists idx_loans_date     on public.personal_loans (loan_date desc);
 
 -- ============ updated_at TRIGGER ============
 create or replace function public.set_updated_at()
@@ -96,18 +109,21 @@ alter table public.installments    enable row level security;
 alter table public.payables        enable row level security;
 alter table public.payments        enable row level security;
 alter table public.salesmen        enable row level security;
+alter table public.personal_loans enable row level security;
 
 drop policy if exists "auth all" on public.sales;
 drop policy if exists "auth all" on public.installments;
 drop policy if exists "auth all" on public.payables;
 drop policy if exists "auth all" on public.payments;
 drop policy if exists "auth all" on public.salesmen;
+drop policy if exists "auth all" on public.personal_loans;
 
 create policy "auth all" on public.sales          for all to authenticated using (true) with check (true);
 create policy "auth all" on public.installments   for all to authenticated using (true) with check (true);
 create policy "auth all" on public.payables       for all to authenticated using (true) with check (true);
 create policy "auth all" on public.payments       for all to authenticated using (true) with check (true);
 create policy "auth all" on public.salesmen       for all to authenticated using (true) with check (true);
+create policy "auth all" on public.personal_loans for all to authenticated using (true) with check (true);
 
 -- ============ SEED: SALESMEN ============
 -- Safe to re-run (skips names that already exist).
