@@ -7,6 +7,7 @@ Works on laptop and phone. Currency: PKR.
 
 - **Dashboard** — total sale, cash, bank, to-receive / to-pay balances with month/year/all-time/custom date filters, sales split by office/dealer/salesman, recent sales.
 - **Sales** — record sales with date, customer, sold through (office / dealer / salesman), any number of items (one line each), total, and how it was paid (cash / bank). Installments and notes live in optional sections that stay collapsed until needed. Edit, delete, search.
+- **Filters** — the ⚙ *Filters* button on Sales narrows the list by source (office / dealer / salesman), salesman name, kind (installments or one-time), payment status (paid in full / still to receive), any date or period (with Today / Yesterday / This week / This month / Last month one-taps), and amount range (`1lac` style amounts work here too). A line under the toolbar shows how many match and their totals.
 - **Loans (money given out)** — record cash you gave someone: who, how much, on which day, and when he will give it back. Tick **✓ Returned** when the money comes back; the page totals what is still to get back, what is late, and what was returned.
 - **Easy amounts** — every amount field accepts `500000`, `5lac`, `50hazar`, `2cr` or `1,50,000` and converts automatically; tapping a field selects it so you can just start typing.
 - **Salesmen** — a saved list of salesmen (seeded with Yasir, Fazal, Usman) to pick from on the sale form, plus a manager to add or delete them. Sales made by a new salesman can be added inline with **+ Add**.

@@ -177,7 +177,11 @@ const state = {
   salesPay: {},
   salesmen: [],
   search: "",
-  source: "",
+  /* sales filters (⚙ Filters panel) */
+  f: {
+    source: "", salesman: "", kind: "", status: "",
+    from: "", to: "", min: "", max: "", quick: "all",
+  },
   recSearch: "",
   loanSearch: "",
   loanRows: [],
@@ -352,13 +356,70 @@ function saleOutstanding(r) {
   );
 }
 
+/* ---- sales filters ---- */
+function activeFilterCount() {
+  const f = state.f;
+  return ["source", "salesman", "kind", "status", "from", "to", "min", "max"]
+    .filter((k) => String(f[k] || "").trim() !== "").length;
+}
+const filtersActive = () => state.search.trim() !== "" || activeFilterCount() > 0;
+
+function filterSales() {
+  const f = state.f;
+  const q = state.search.trim().toLowerCase();
+  const sm = f.salesman.trim().toLowerCase();
+  const minRaw = parseAmount(f.min);
+  const maxRaw = parseAmount(f.max);
+  const min = !f.min.trim() || Number.isNaN(minRaw) ? null : minRaw;
+  const max = !f.max.trim() || Number.isNaN(maxRaw) ? null : maxRaw;
+
+  if (f.from && f.to && f.from > f.to) return [];   /* nothing can match a backwards range */
+
+  return state.sales.filter((r) => {
+    if (q && !(r.customer_name || "").toLowerCase().includes(q)) return false;
+    if (f.source && r.source !== f.source) return false;
+    if (sm && !(r.salesman_name || "").toLowerCase().includes(sm)) return false;
+    if (f.kind === "inst" && !r.is_installment) return false;
+    if (f.kind === "once" && r.is_installment) return false;
+    if (f.status) {
+      const bal = saleOutstanding(r);
+      if (f.status === "paid" ? bal > 0.009 : bal <= 0.009) return false;
+    }
+    if (f.from && r.sale_date < f.from) return false;   /* ISO dates compare in order */
+    if (f.to && r.sale_date > f.to) return false;
+    const t = num(r.total_amount);
+    if (min !== null && t < min) return false;
+    if (max !== null && t > max) return false;
+    return true;
+  });
+}
+
 function renderSales() {
-  const q = state.search.toLowerCase();
-  const rows = state.sales.filter(
-    (r) =>
-      (!q || (r.customer_name || "").toLowerCase().includes(q)) &&
-      (!state.source || r.source === state.source)
-  );
+  const f = state.f;
+  const rows = filterSales();
+  const active = filtersActive();
+  const nFilters = activeFilterCount();
+
+  const badge = $("#sales-filter-count");
+  badge.hidden = nFilters === 0;
+  badge.textContent = String(nFilters);
+  $("#sales-filter-btn").classList.toggle("is-on", nFilters > 0);
+
+  const total = rows.reduce((s, r) => s + num(r.total_amount), 0);
+  const due = rows.reduce((s, r) => s + Math.max(saleOutstanding(r), 0), 0);
+  const info = $("#sales-list-info");
+  info.hidden = false;
+  info.innerHTML = active
+    ? `Showing <b>${rows.length}</b> of ${state.sales.length} sales · ${money(total)} total · ${money(due)} to receive`
+    : `${state.sales.length} sales · ${money(total)} total · ${money(due)} to receive`;
+
+  const hint = $("#sales-filter-hint");
+  hint.classList.toggle("warn", !!(f.from && f.to && f.from > f.to));
+  hint.textContent =
+    f.from && f.to && f.from > f.to
+      ? "⚠ The “From” date is after the “To” date — nothing can match."
+      : `${rows.length} of ${state.sales.length} sales match`;
+
   $("#sales-list").innerHTML = rows.length
     ? rows
         .map((r) => {
@@ -378,11 +439,42 @@ function renderSales() {
           </div>`;
         })
         .join("")
-    : `<div class="empty">No sales found. Tap “+ New sale” to add one.</div>`;
+    : `<div class="empty">${
+        active
+          ? "No sales match these filters. Tap “Clear all filters” to start again."
+          : "No sales found. Tap “+ New sale” to add one."
+      }</div>`;
 
   $$("#sales-list .row").forEach((el) =>
     el.addEventListener("click", () => openSaleDetail(el.dataset.id))
   );
+}
+
+/* one-tap date ranges for the filter panel */
+function applyQuickRange(range) {
+  const f = state.f;
+  const t = todayISO();
+  if (range === "all") { f.from = ""; f.to = ""; }
+  else if (range === "today") { f.from = t; f.to = t; }
+  else if (range === "yesterday") {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    f.from = f.to = isoOf(d);
+  } else if (range === "week") {
+    const d = new Date();
+    d.setDate(d.getDate() - (d.getDay() + 6) % 7);   /* Monday of this week */
+    f.from = isoOf(d); f.to = t;
+  } else if (range === "month") { f.from = monthStartISO(); f.to = t; }
+  else if (range === "lastmonth") {
+    const d = new Date();
+    f.from = isoOf(new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    f.to = isoOf(new Date(d.getFullYear(), d.getMonth(), 0));   /* last day of previous month */
+  } else if (range === "custom") { $("#sf-from").focus(); return; }
+
+  f.quick = range;
+  $("#sf-from").value = f.from;
+  $("#sf-to").value = f.to;
+  $$("#sf-quick .seg").forEach((b) => b.classList.toggle("active", b.dataset.range === range));
+  renderSales();
 }
 
 /* ============ sale detail ============ */
@@ -1187,7 +1279,47 @@ function bindEvents() {
     await loadSalesmen().catch((x) => toast(x.message, true));
   });
   $("#sales-search").addEventListener("input", (e) => { state.search = e.target.value; renderSales(); });
-  $("#sales-source-filter").addEventListener("change", (e) => { state.source = e.target.value; renderSales(); });
+
+  /* ⚙ Filters panel */
+  $("#sales-filter-btn").addEventListener("click", () => {
+    const panel = $("#sales-filters");
+    panel.hidden = !panel.hidden;
+    $("#sales-filter-btn").setAttribute("aria-expanded", String(!panel.hidden));
+  });
+  const bindFilter = (id, key, ev) => {
+    $("#" + id).addEventListener(ev, (e) => {
+      state.f[key] = e.target.value;
+      if (key === "from" || key === "to") {
+        state.f.quick = "custom";
+        $$("#sf-quick .seg").forEach((b) => b.classList.toggle("active", b.dataset.range === "custom"));
+      }
+      renderSales();
+    });
+  };
+  bindFilter("sf-source", "source", "change");
+  bindFilter("sf-salesman", "salesman", "input");
+  bindFilter("sf-kind", "kind", "change");
+  bindFilter("sf-status", "status", "change");
+  bindFilter("sf-from", "from", "change");
+  bindFilter("sf-to", "to", "change");
+  bindFilter("sf-min", "min", "input");
+  bindFilter("sf-max", "max", "input");
+
+  $("#sf-quick").addEventListener("click", (e) => {
+    const b = e.target.closest(".seg");
+    if (b) applyQuickRange(b.dataset.range);
+  });
+
+  $("#sales-filter-clear").addEventListener("click", () => {
+    state.f = { source: "", salesman: "", kind: "", status: "", from: "", to: "", min: "", max: "", quick: "all" };
+    state.search = "";
+    $("#sales-search").value = "";
+    ["sf-source", "sf-salesman", "sf-kind", "sf-status", "sf-from", "sf-to", "sf-min", "sf-max"]
+      .forEach((id) => { $("#" + id).value = ""; });
+    $$("#sf-quick .seg").forEach((b) => b.classList.toggle("active", b.dataset.range === "all"));
+    renderSales();
+    toast("Filters cleared");
+  });
 
   /* sale form */
   $("#sale-form").addEventListener("submit", saveSale);

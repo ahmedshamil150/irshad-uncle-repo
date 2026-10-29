@@ -84,15 +84,71 @@
       <section id="view-sales" class="view" hidden>
         <div class="toolbar">
           <input type="search" id="sales-search" class="input" placeholder="Search customer…" />
-          <select id="sales-source-filter" class="input">
-            <option value="">All sources</option>
-            <option value="office">Office</option>
-            <option value="dealer">Dealer</option>
-            <option value="salesman">Salesman</option>
-          </select>
+          <button type="button" id="sales-filter-btn" class="btn btn-ghost" aria-expanded="false" aria-controls="sales-filters">
+            ⚙ Filters <span id="sales-filter-count" class="chip-count" hidden>0</span>
+          </button>
           <button type="button" id="manage-salesmen-btn" class="btn btn-ghost">Salesmen</button>
           <button type="button" id="new-sale-btn" class="btn btn-primary">+ New sale</button>
         </div>
+
+        <div id="sales-filters" class="filters" hidden>
+          <div class="filter-grid">
+            <label class="field"><span>Sold through</span>
+              <select id="sf-source">
+                <option value="">All — office, dealer &amp; salesman</option>
+                <option value="office">Office only</option>
+                <option value="dealer">Dealer only</option>
+                <option value="salesman">Salesman only</option>
+              </select>
+            </label>
+            <label class="field"><span>Salesman</span>
+              <input type="text" id="sf-salesman" list="salesman-names" autocomplete="off" placeholder="Any salesman" />
+            </label>
+            <label class="field"><span>Kind of sale</span>
+              <select id="sf-kind">
+                <option value="">All sales</option>
+                <option value="inst">Installments only</option>
+                <option value="once">One-time payment only</option>
+              </select>
+            </label>
+            <label class="field"><span>Payment status</span>
+              <select id="sf-status">
+                <option value="">Any status</option>
+                <option value="paid">Paid in full</option>
+                <option value="due">Still to receive</option>
+              </select>
+            </label>
+            <label class="field"><span>From date</span>
+              <input type="date" id="sf-from" />
+            </label>
+            <label class="field"><span>To date</span>
+              <input type="date" id="sf-to" />
+            </label>
+            <label class="field"><span>Amount from (Rs)</span>
+              <input type="text" id="sf-min" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 1lac" />
+            </label>
+            <label class="field"><span>Amount up to (Rs)</span>
+              <input type="text" id="sf-max" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 20lac" />
+            </label>
+          </div>
+
+          <div class="segmented filter-quick" id="sf-quick">
+            <button type="button" class="seg active" data-range="all">All time</button>
+            <button type="button" class="seg" data-range="today">Today</button>
+            <button type="button" class="seg" data-range="yesterday">Yesterday</button>
+            <button type="button" class="seg" data-range="week">This week</button>
+            <button type="button" class="seg" data-range="month">This month</button>
+            <button type="button" class="seg" data-range="lastmonth">Last month</button>
+            <button type="button" class="seg" data-range="custom">Custom dates</button>
+          </div>
+
+          <div class="filter-foot">
+            <span id="sales-filter-hint" class="filter-hint"></span>
+            <button type="button" id="sales-filter-clear" class="btn btn-sm btn-ghost">Clear all filters</button>
+          </div>
+        </div>
+
+        <div id="sales-list-info" class="list-info" hidden></div>
         <div id="sales-list" class="list"></div>
       </section>
 
