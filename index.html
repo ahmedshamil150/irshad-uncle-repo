@@ -259,9 +259,46 @@
         </label>
 
         <div class="field"><span>Items / machines</span>
+          <div class="picker">
+            <select id="machine-picker" class="picker-machine">
+              <option value="">＋ Pick a machine type…</option>
+              <option value="Logiq">Logiq</option>
+              <option value="Aloka">Aloka</option>
+              <option value="Viamo">Viamo</option>
+              <option value="ProSound">ProSound</option>
+              <option value="S-Nerve">S-Nerve</option>
+              <option value="Xario">Xario</option>
+              <option value="Voluson">Voluson</option>
+              <option value="Aplio">Aplio</option>
+              <option value="Affiniti">Affiniti</option>
+              <option value="E-Cube">E-Cube</option>
+              <option value="Resona">Resona</option>
+              <option value="SonoScape">SonoScape</option>
+              <option value="Mindray">Mindray</option>
+              <option value="Edan">Edan</option>
+              <option value="Chison">Chison</option>
+            </select>
+
+            <div class="picker-sub">Printer &amp; probes — tick everything included</div>
+            <div class="picker-checks" id="item-checks">
+              <label class="pick-chk"><input type="checkbox" value="Printer" /><span>Printer</span></label>
+              <label class="pick-chk"><input type="checkbox" value="TVS probe" /><span>TVS probe</span></label>
+              <label class="pick-chk"><input type="checkbox" value="Cardiac probe" /><span>Cardiac probe</span></label>
+              <label class="pick-chk"><input type="checkbox" value="Phased array probe" /><span>Phased array probe</span></label>
+              <label class="pick-chk"><input type="checkbox" value="Linear probe" /><span>Linear probe</span></label>
+              <label class="pick-chk"><input type="checkbox" value="Convex probe" /><span>Convex probe</span></label>
+              <label class="pick-chk"><input type="checkbox" value="Micro convex probe" /><span>Micro convex probe</span></label>
+              <label class="pick-chk"><input type="checkbox" value="Abdominal probe" /><span>Abdominal probe</span></label>
+              <label class="pick-chk"><input type="checkbox" value="Endocavity probe" /><span>Endocavity probe</span></label>
+              <label class="pick-chk"><input type="checkbox" value="Volume (4D) probe" /><span>Volume (4D) probe</span></label>
+              <label class="pick-chk"><input type="checkbox" value="Biplane probe" /><span>Biplane probe</span></label>
+              <label class="pick-chk"><input type="checkbox" value="Pencil (CW) probe" /><span>Pencil (CW) probe</span></label>
+            </div>
+          </div>
+
           <div id="sale-items" class="item-list"></div>
-          <button type="button" id="add-item-btn" class="btn btn-sm btn-ghost item-add">+ Add item</button>
-          <small class="hint">One line per item — add as many as this sale has.</small>
+          <button type="button" id="add-item-btn" class="btn btn-sm btn-ghost item-add">+ Add manually</button>
+          <small class="hint">Pick a machine and tick the printer / probes above, or type your own line — one line per item.</small>
         </div>
 
         <label class="field"><span>Total sale (Rs) *</span>

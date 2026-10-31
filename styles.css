@@ -101,6 +101,23 @@ h1, h2, h3 { margin: 0; }
 .disclose-body .check { margin-top: 4px; }
 
 /* Item lines on the sale form */
+.picker {
+  border: 1px solid var(--line); background: #f8fafd; border-radius: 12px;
+  padding: 11px 12px 12px; margin-bottom: 11px;
+}
+.picker-machine {
+  width: 100%; padding: 10px 11px; font-size: 15px; font-family: inherit;
+  border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink);
+}
+.picker-machine:focus {
+  outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(29,78,216,.12);
+}
+.picker-sub { font-size: 12px; font-weight: 700; color: var(--muted); margin: 12px 0 8px; }
+.picker-checks { display: flex; flex-wrap: wrap; gap: 7px 14px; }
+.pick-chk { display: flex; align-items: center; gap: 6px; font-size: 13.5px; cursor: pointer; user-select: none; }
+.pick-chk input { width: 16px; height: 16px; margin: 0; accent-color: var(--brand); cursor: pointer; }
+.pick-chk:has(input:checked) span { color: var(--brand); font-weight: 700; }
+
 .item-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 9px; }
 .item-list:empty { margin-bottom: 0; }
 .item-row { display: flex; gap: 8px; align-items: stretch; }

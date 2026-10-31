@@ -717,9 +717,30 @@ function renderItems(stored) {
   box.innerHTML = "";
   const list = String(stored || "").split("\n").map((x) => x.trim()).filter(Boolean);
   (list.length ? list : [""]).forEach((v) => box.appendChild(itemRow(v)));
+  syncItemChecks();
 }
 const itemValues = () =>
   $$("#sale-items .item-input").map((i) => i.value.trim()).filter(Boolean);
+
+/* ---- machine dropdown + printer/probe checkboxes ---- */
+/* A picked machine or ticked box becomes one line in the item list;
+   unticking removes that exact line, and lines typed by hand tick the boxes back. */
+function addNewItem(value) {
+  const v = String(value || "").trim();
+  if (!v) return;
+  const empty = $$("#sale-items .item-input").find((i) => !i.value.trim());
+  if (empty) empty.value = v;
+  else $("#sale-items").appendChild(itemRow(v));
+}
+function removeItemRow(value) {
+  const want = String(value || "").trim().toLowerCase();
+  const hit = $$("#sale-items .item-input").find((i) => i.value.trim().toLowerCase() === want);
+  if (hit) hit.closest(".item-row").remove();
+}
+function syncItemChecks() {
+  const have = itemValues().map((v) => v.toLowerCase());
+  $$("#item-checks input").forEach((cb) => { cb.checked = have.includes(cb.value.toLowerCase()); });
+}
 
 function syncSaleForm() {
   const src = $("#sale-source").value;
@@ -1468,8 +1489,9 @@ function bindEvents() {
   });
   $("#sale-items").addEventListener("click", (e) => {
     const del = e.target.closest(".item-del");
-    if (del) del.closest(".item-row").remove();
+    if (del) { del.closest(".item-row").remove(); syncItemChecks(); }
   });
+  $("#sale-items").addEventListener("input", syncItemChecks);   /* typing "Printer" by hand ticks its box */
   $("#sale-items").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && e.target.classList.contains("item-input")) {
       e.preventDefault();
@@ -1477,6 +1499,22 @@ function bindEvents() {
       $("#sale-items").appendChild(row);
       row.querySelector("input").focus();
     }
+  });
+
+  /* machine dropdown → adds a line, then resets so the same type can be picked again */
+  $("#machine-picker").addEventListener("change", (e) => {
+    if (!e.target.value) return;
+    addNewItem(e.target.value);
+    e.target.value = "";
+  });
+
+  /* printer / probes → tick adds a line, untick removes that exact line */
+  $("#item-checks").addEventListener("change", (e) => {
+    const cb = e.target.closest("input[type=checkbox]");
+    if (!cb) return;
+    if (cb.checked) addNewItem(cb.value);
+    else removeItemRow(cb.value);
+    syncItemChecks();
   });
 
   /* money fields: focus selects everything, blur turns 5lac into 500000 */
