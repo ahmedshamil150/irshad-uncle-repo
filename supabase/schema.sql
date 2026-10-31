@@ -76,6 +76,16 @@ create table if not exists public.personal_loans (
   notes       text
 );
 
+-- Expenses: money WE spent (shop running costs, salaries, bills…).
+create table if not exists public.expenses (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  entry_date date not null default current_date,
+  title      text not null,
+  amount     numeric(14,2) not null check (amount > 0),
+  notes      text
+);
+
 -- ============ INDEXES ============
 create index if not exists idx_sales_date     on public.sales (sale_date desc);
 create index if not exists idx_sales_customer on public.sales (lower(customer_name));
@@ -86,6 +96,7 @@ create index if not exists idx_pay_payable    on public.payments (payable_id);
 create index if not exists idx_pay_date       on public.payments (paid_at);
 create index if not exists idx_payables_date  on public.payables (entry_date desc);
 create index if not exists idx_loans_date     on public.personal_loans (loan_date desc);
+create index if not exists idx_expenses_date  on public.expenses (entry_date desc);
 
 -- ============ updated_at TRIGGER ============
 create or replace function public.set_updated_at()
@@ -110,6 +121,7 @@ alter table public.payables        enable row level security;
 alter table public.payments        enable row level security;
 alter table public.salesmen        enable row level security;
 alter table public.personal_loans enable row level security;
+alter table public.expenses       enable row level security;
 
 drop policy if exists "auth all" on public.sales;
 drop policy if exists "auth all" on public.installments;
@@ -117,6 +129,7 @@ drop policy if exists "auth all" on public.payables;
 drop policy if exists "auth all" on public.payments;
 drop policy if exists "auth all" on public.salesmen;
 drop policy if exists "auth all" on public.personal_loans;
+drop policy if exists "auth all" on public.expenses;
 
 create policy "auth all" on public.sales          for all to authenticated using (true) with check (true);
 create policy "auth all" on public.installments   for all to authenticated using (true) with check (true);
@@ -124,6 +137,7 @@ create policy "auth all" on public.payables       for all to authenticated using
 create policy "auth all" on public.payments       for all to authenticated using (true) with check (true);
 create policy "auth all" on public.salesmen       for all to authenticated using (true) with check (true);
 create policy "auth all" on public.personal_loans for all to authenticated using (true) with check (true);
+create policy "auth all" on public.expenses       for all to authenticated using (true) with check (true);
 
 -- ============ SEED: SALESMEN ============
 -- Safe to re-run (skips names that already exist).

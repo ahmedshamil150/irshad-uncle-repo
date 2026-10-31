@@ -9,6 +9,7 @@ Works on laptop and phone. Currency: PKR.
 - **Sales** — record sales with date, customer, sold through (office / dealer / salesman), any number of items (one line each), total, and how it was paid (cash / bank). Installments and notes live in optional sections that stay collapsed until needed. Edit, delete, search.
 - **Filters** — the ⚙ *Filters* button on Sales narrows the list by source (office / dealer / salesman), salesman name, kind (installments or one-time), payment status (paid in full / still to receive), any date or period (with Today / Yesterday / This week / This month / Last month one-taps), and amount range (`1lac` style amounts work here too). A line under the toolbar shows how many match and their totals.
 - **Loans (money given out)** — record cash you gave someone: who, how much, on which day, and when he will give it back. Tick **✓ Returned** when the money comes back; the page totals what is still to get back, what is late, and what was returned.
+- **Expenses (money spent)** — just record what money went out: the day, what it was for (rent, salary, bills… suggestions pop up), how much, and optional notes. The page totals this month, this year, and all time, and you can search past expenses.
 - **Easy amounts** — every amount field accepts `500000`, `5lac`, `50hazar`, `2cr` or `1,50,000` and converts automatically; tapping a field selects it so you can just start typing.
 - **Salesmen** — a saved list of salesmen (seeded with Yasir, Fazal, Usman) to pick from on the sale form, plus a manager to add or delete them. Sales made by a new salesman can be added inline with **+ Add**.
 - **Installments** — tick *Split what is left unpaid into monthly installments*, pick how many months + first due date; the schedule is generated automatically. Each installment shows pending / partial / paid / overdue.
@@ -38,7 +39,7 @@ supabase/schema.sql   database tables, RLS, login user
 2. Paste the entire contents of `supabase/schema.sql` and click **Run**
 3. You should see `Success. No rows returned`
 
-This creates 6 tables (`sales`, `installments`, `payables`, `payments`, `salesmen`, `personal_loans`)
+This creates 7 tables (`sales`, `installments`, `payables`, `payments`, `salesmen`, `personal_loans`, `expenses`)
 and enables RLS (only a signed-in user can touch data). It also seeds the salesmen list
 with **Yasir**, **Fazal** and **Usman** (safe to re-run — existing names are skipped).
 
@@ -126,4 +127,5 @@ Manual alternative: `npm run build` then `npx serve dist`
 3. **To receive** → tap a customer → *+ Add payment* when money comes in
 4. **To pay** → *+ Add what you owe* for a dealer, *+ Pay* when you pay
 5. **Loans** → *+ New loan* when you hand money to someone, tick *✓ Returned* when it comes back
-6. **Dashboard** → month/year totals whenever needed
+6. **Expenses** → *+ New expense* whenever money is spent (rent, bills, salary…)
+7. **Dashboard** → month/year totals whenever needed

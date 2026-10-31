@@ -45,6 +45,7 @@
       <button type="button" class="tab active" data-view="dashboard">Dashboard</button>
       <button type="button" class="tab" data-view="sales">Sales</button>
       <button type="button" class="tab" data-view="loans">Loans</button>
+      <button type="button" class="tab" data-view="expenses">Expenses</button>
       <button type="button" class="tab" data-view="receivables">To receive</button>
       <button type="button" class="tab" data-view="payables">To pay</button>
     </nav>
@@ -162,6 +163,16 @@
         <div id="loan-list" class="list"></div>
       </section>
 
+      <!-- ============ EXPENSES (money we spent) ============ -->
+      <section id="view-expenses" class="view" hidden>
+        <div id="expense-summary" class="cards cards-tight"></div>
+        <div class="toolbar">
+          <input type="search" id="expense-search" class="input" placeholder="Search what it was for…" />
+          <button type="button" id="new-expense-btn" class="btn btn-primary">+ New expense</button>
+        </div>
+        <div id="expense-list" class="list"></div>
+      </section>
+
       <!-- ============ RECEIVABLES ============ -->
       <section id="view-receivables" class="view" hidden>
         <div id="receivable-summary" class="cards cards-tight"></div>
@@ -191,6 +202,9 @@
       </button>
       <button type="button" class="bnav" data-view="loans">
         <span class="bnav-ico">↗</span><span>Loans</span>
+      </button>
+      <button type="button" class="bnav" data-view="expenses">
+        <span class="bnav-ico">−</span><span>Expenses</span>
       </button>
       <button type="button" class="bnav" data-view="receivables">
         <span class="bnav-ico">↓</span><span>To receive</span>
@@ -411,6 +425,51 @@
           <input type="text" id="loan-notes" placeholder="Optional" />
         </label>
         <p id="loan-form-error" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Expense form -->
+  <div id="modal-expense" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="expense-modal-title">New expense</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <form id="expense-form" class="modal-body form">
+        <input type="hidden" id="expense-id" />
+        <label class="field"><span>Date *</span>
+          <input type="date" id="expense-date" required />
+          <small class="hint">The day the money was spent.</small>
+        </label>
+        <label class="field"><span>What was it for? *</span>
+          <input type="text" id="expense-title" list="expense-kinds" required placeholder="e.g. Shop rent" />
+          <datalist id="expense-kinds">
+            <option value="Rent"></option>
+            <option value="Salary"></option>
+            <option value="Electricity bill"></option>
+            <option value="Internet / phone bill"></option>
+            <option value="Fuel"></option>
+            <option value="Travel"></option>
+            <option value="Repairs"></option>
+            <option value="Office supplies"></option>
+            <option value="Tea / lunch"></option>
+            <option value="Packing & transport"></option>
+          </datalist>
+          <small class="hint">Rent, salary, bill, fuel — anything money was spent on. Pick a suggestion or type your own.</small>
+        </label>
+        <label class="field"><span>Amount (Rs) *</span>
+          <input type="text" id="expense-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 20hazar" />
+          <small class="hint">20000, 20hazar, 0.5lac all work.</small>
+        </label>
+        <label class="field"><span>Notes</span>
+          <input type="text" id="expense-notes" placeholder="Optional" />
+        </label>
+        <p id="expense-form-error" class="form-error" hidden></p>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" data-close>Cancel</button>
           <button type="submit" class="btn btn-primary">Save</button>
