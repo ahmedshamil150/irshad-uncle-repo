@@ -29,9 +29,10 @@ const out = path.join(root, "dist");
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 
-for (const f of ["index.html", "styles.css", "app.js"]) {
+for (const f of ["index.html", "styles.css", "app.js", "manifest.json", "icon-180.png", "icon-192.png", "icon-512.png"]) {
   fs.copyFileSync(path.join(root, f), path.join(out, f));
 }
+fs.copyFileSync(path.join(root, "icon-192.png"), path.join(out, "favicon.ico")); /* PNG bytes; browsers sniff it, kills the 404 */
 fs.cpSync(path.join(root, "vendor"), path.join(out, "vendor"), { recursive: true });
 
 fs.writeFileSync(

@@ -93,15 +93,36 @@ function toast(msg, isErr = false) {
 }
 const busy = (on) => ($("#busy").hidden = !on);
 
+/* A phone's Back button closes the open sheet instead of leaving the app. */
+let modalBackArmed = false;
+
 function openModal(id) {
   closeModals(true);
-  $("#" + id).hidden = false;
+  const el = $("#" + id);
+  el.hidden = false;
   document.body.style.overflow = "hidden";
+  const body = el.querySelector(".modal-body");
+  if (body) body.scrollTop = 0;              /* reopened sheets start at the top */
+  if (!modalBackArmed) {
+    modalBackArmed = true;
+    history.pushState({ modal: id }, "");
+  }
 }
 function closeModals(keepLock = false) {
   $$(".modal").forEach((m) => (m.hidden = true));
-  if (!keepLock) document.body.style.overflow = "";
+  if (!keepLock) {
+    document.body.style.overflow = "";
+    if (modalBackArmed) {
+      modalBackArmed = false;
+      history.back();
+    }
+  }
 }
+window.addEventListener("popstate", () => {
+  modalBackArmed = false;
+  closeModals();   /* modalBackArmed is already false, so no history.back() loop —
+                      this path restores body scrolling too */
+});
 
 /* closing payment modal returns you to the sale detail it was opened from */
 function dismissModals() {

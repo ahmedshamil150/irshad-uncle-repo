@@ -16,6 +16,7 @@ Works on laptop and phone. Currency: PKR.
 - **Installments** — tick *Split what is left unpaid into monthly installments*, pick how many months + first due date; the schedule is generated automatically. Each installment shows pending / partial / paid / overdue.
 - **To receive** — what customers still owe you, overdue flag, add payments (cash/bank) against a sale.
 - **To pay** — what you owe dealers/suppliers, add payments against them.
+- **Mobile-first** — built for phones: no page zoom when you tap a field, big tap targets, sticky Save/Cancel above the keyboard, safe-area padding (notch/home-indicator aware), the phone's Back button closes open sheets instead of leaving the app, and a bottom tab bar on small screens. It's also installable to the home screen (Add to Home Screen) with its own icon, opening like a native app.
 - **Login** — single email/password protected by Supabase Row Level Security.
 
 ## Files
