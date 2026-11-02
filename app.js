@@ -952,13 +952,21 @@ async function loadReceivables() {
               <div class="row-amount bal-due">${money(r.bal)}</div>
               <div class="row-bal" style="color:var(--muted)">left</div>
             </div>
+            <div class="row-actions">
+              <button type="button" class="btn btn-sm btn-primary" data-act="pay">✓ Paid all</button>
+            </div>
           </div>`)
           .join("")
       : `<div class="empty">Nothing to receive — every sale is fully paid.</div>`;
 
-    $$("#receivable-list .row").forEach((el) =>
-      el.addEventListener("click", () => openSaleDetail(el.dataset.id))
-    );
+    $$("#receivable-list .row").forEach((el) => {
+      const r = rows.find((x) => x.id === el.dataset.id);
+      el.addEventListener("click", (e) => {
+        if (e.target.closest('[data-act="pay"]'))
+          openPaymentModal("sale", r.id, `${r.customer_name} — still to receive ${money(r.bal)}`, r.bal);
+        else openSaleDetail(el.dataset.id);
+      });
+    });
   } finally {
     busy(false);
   }
@@ -1357,7 +1365,14 @@ function openPaymentModal(type, id, context, max) {
   $("#pay-context").textContent = context;
   $("#pay-date").value = todayISO();
   state.payMax = max;
+  const full = round2(num(max));
+  /* pre-fill the whole remaining balance: if he paid everything, just pick cash/bank and Save */
+  $("#pay-amount").value = full > 0 ? String(full) : "";
   $("#pay-amount").placeholder = "Up to " + money(max);
+  $("#pay-amount-hint").textContent =
+    full > 0
+      ? `Filled with the full ${money(full)} — he paid everything? Just choose Cash or Bank and Save. If he paid part of it, type what he actually paid.`
+      : "How much came in — 50000, 50hazar or 0.5lac all work.";
   openModal("modal-payment");
 }
 
@@ -1389,7 +1404,10 @@ async function savePayment(e) {
     const { error } = await sb.from("payments").insert(payload);
     if (error) throw error;
     closeModals();
-    toast("Payment added");
+    const left = round2(max - amount);
+    if (left > 0.009) toast("Payment added");
+    else if (type === "sale") toast("Fully paid ✓ — nothing left to receive");
+    else toast("Fully paid ✓ — nothing left to pay");
     if (type === "sale") {
       openSaleDetail(id);
       if (state.view === "sales") loadSales();

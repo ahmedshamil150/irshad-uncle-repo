@@ -14,7 +14,7 @@ Works on laptop and phone. Currency: PKR.
 - **Easy amounts** — every amount field accepts `500000`, `5lac`, `50hazar`, `2cr` or `1,50,000` and converts automatically; tapping a field selects it so you can just start typing.
 - **Salesmen** — a saved list of salesmen (seeded with Yasir, Fazal, Usman) to pick from on the sale form, plus a manager to add or delete them. Sales made by a new salesman can be added inline with **+ Add**.
 - **Installments** — tick *Split what is left unpaid into monthly installments*, pick how many months + first due date; the schedule is generated automatically. Each installment shows pending / partial / paid / overdue.
-- **To receive** — what customers still owe you, overdue flag, add payments (cash/bank) against a sale.
+- **To receive** — what customers still owe you, overdue flag, add payments (cash/bank) against a sale. When someone pays everything, tap **✓ Paid all** on their row (or *+ Add payment* inside the sale) — the remaining amount is already filled in, so just pick Cash or Bank and Save. The sale then shows *Paid in full* and drops off this list, and the dashboard totals update.
 - **To pay** — what you owe dealers/suppliers, add payments against them.
 - **Mobile-first** — built for phones: no page zoom when you tap a field, big tap targets, sticky Save/Cancel above the keyboard, safe-area padding (notch/home-indicator aware), the phone's Back button closes open sheets instead of leaving the app, and a bottom tab bar on small screens. It's also installable to the home screen (Add to Home Screen) with its own icon, opening like a native app.
 - **Login** — single email/password protected by Supabase Row Level Security.
