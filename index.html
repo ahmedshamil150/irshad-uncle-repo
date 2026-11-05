@@ -53,8 +53,10 @@
     <nav class="tabbar" id="tabbar">
       <button type="button" class="tab active" data-view="dashboard">Dashboard</button>
       <button type="button" class="tab" data-view="sales">Sales</button>
+      <button type="button" class="tab" data-view="purchases">Purchases</button>
       <button type="button" class="tab" data-view="loans">Loans</button>
       <button type="button" class="tab" data-view="expenses">Expenses</button>
+      <button type="button" class="tab" data-view="zakat">Zakat</button>
       <button type="button" class="tab" data-view="receivables">To receive</button>
       <button type="button" class="tab" data-view="payables">To pay</button>
     </nav>
@@ -162,6 +164,16 @@
         <div id="sales-list" class="list"></div>
       </section>
 
+      <!-- ============ PURCHASES (things we bought) ============ -->
+      <section id="view-purchases" class="view" hidden>
+        <div id="purchase-summary" class="cards cards-tight"></div>
+        <div class="toolbar">
+          <input type="search" id="purchase-search" class="input" placeholder="Search what was bought…" />
+          <button type="button" id="new-purchase-btn" class="btn btn-primary">+ New purchase</button>
+        </div>
+        <div id="purchase-list" class="list"></div>
+      </section>
+
       <!-- ============ LOANS (money we gave out) ============ -->
       <section id="view-loans" class="view" hidden>
         <div id="loan-summary" class="cards cards-tight"></div>
@@ -180,6 +192,16 @@
           <button type="button" id="new-expense-btn" class="btn btn-primary">+ New expense</button>
         </div>
         <div id="expense-list" class="list"></div>
+      </section>
+
+      <!-- ============ ZAKAT (money given out as zakat) ============ -->
+      <section id="view-zakat" class="view" hidden>
+        <div id="zakat-summary" class="cards cards-tight"></div>
+        <div class="toolbar">
+          <input type="search" id="zakat-search" class="input" placeholder="Search zakat entries…" />
+          <button type="button" id="new-zakat-btn" class="btn btn-primary">+ New zakat</button>
+        </div>
+        <div id="zakat-list" class="list"></div>
       </section>
 
       <!-- ============ RECEIVABLES ============ -->
@@ -209,14 +231,20 @@
       <button type="button" class="bnav" data-view="sales">
         <span class="bnav-ico">Rs</span><span>Sales</span>
       </button>
+      <button type="button" class="bnav" data-view="purchases" title="Purchases">
+        <span class="bnav-ico">🛒</span><span>Buy</span>
+      </button>
       <button type="button" class="bnav" data-view="loans">
         <span class="bnav-ico">↗</span><span>Loans</span>
       </button>
-      <button type="button" class="bnav" data-view="expenses">
-        <span class="bnav-ico">−</span><span>Expenses</span>
+      <button type="button" class="bnav" data-view="expenses" title="Expenses">
+        <span class="bnav-ico">−</span><span>Expense</span>
       </button>
-      <button type="button" class="bnav" data-view="receivables">
-        <span class="bnav-ico">↓</span><span>To receive</span>
+      <button type="button" class="bnav" data-view="zakat">
+        <span class="bnav-ico">☪</span><span>Zakat</span>
+      </button>
+      <button type="button" class="bnav" data-view="receivables" title="To receive">
+        <span class="bnav-ico">↓</span><span>Receive</span>
       </button>
       <button type="button" class="bnav" data-view="payables">
         <span class="bnav-ico">↑</span><span>To pay</span>
@@ -259,6 +287,20 @@
           </div>
           <datalist id="salesman-names"></datalist>
           <small class="hint">Pick a name from the list, or tap + Add to save a new one.</small>
+        </label>
+
+        <label class="field"><span>Reference</span>
+          <select id="sale-ref-type">
+            <option value="">No reference</option>
+            <option value="office">In office</option>
+            <option value="salesman">Salesman</option>
+          </select>
+          <small class="hint">Someone referred this sale? Choose “In office” or “Salesman”.</small>
+        </label>
+        <label class="field" id="ref-name-field" hidden><span>Reference name *</span>
+          <input type="text" id="sale-ref-name" list="ref-names" placeholder="Name of the reference" />
+          <datalist id="ref-names"></datalist>
+          <small class="hint">Write the name of the reference.</small>
         </label>
 
         <label class="field"><span>Customer name *</span>
@@ -516,6 +558,80 @@
           <input type="text" id="expense-notes" placeholder="Optional" />
         </label>
         <p id="expense-form-error" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Purchase form -->
+  <div id="modal-purchase" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="purchase-modal-title">New purchase</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <form id="purchase-form" class="modal-body form">
+        <input type="hidden" id="purchase-id" />
+        <label class="field"><span>Date *</span>
+          <input type="date" id="purchase-date" required />
+          <small class="hint">The day it was bought.</small>
+        </label>
+        <label class="field"><span>What was bought? *</span>
+          <input type="text" id="purchase-title" list="purchase-kinds" required placeholder="e.g. Ultrasound machine" />
+          <datalist id="purchase-kinds">
+            <option value="Machine / stock"></option>
+            <option value="Printer"></option>
+            <option value="Probe"></option>
+            <option value="Spare parts"></option>
+            <option value="Accessories"></option>
+            <option value="Packing & transport"></option>
+            <option value="Office supplies"></option>
+          </datalist>
+          <small class="hint">Machine, printer, probe, spare parts — anything bought. Pick a suggestion or type your own.</small>
+        </label>
+        <label class="field"><span>Supplier</span>
+          <input type="text" id="purchase-supplier" placeholder="Optional — who you bought it from" />
+        </label>
+        <label class="field"><span>Amount (Rs) *</span>
+          <input type="text" id="purchase-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 12lac" />
+          <small class="hint">1200000, 12lac, 50hazar all work.</small>
+        </label>
+        <label class="field"><span>Notes</span>
+          <input type="text" id="purchase-notes" placeholder="Optional" />
+        </label>
+        <p id="purchase-form-error" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Zakat form -->
+  <div id="modal-zakat" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="zakat-modal-title">New zakat</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <form id="zakat-form" class="modal-body form">
+        <input type="hidden" id="zakat-id" />
+        <label class="field"><span>Date *</span>
+          <input type="date" id="zakat-date" required />
+          <small class="hint">The day the zakat was given.</small>
+        </label>
+        <label class="field"><span>Amount (Rs) *</span>
+          <input type="text" id="zakat-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 50hazar" />
+          <small class="hint">50000, 50hazar, 0.5lac all work.</small>
+        </label>
+        <label class="field"><span>Notes</span>
+          <input type="text" id="zakat-notes" placeholder="Optional — e.g. on whose behalf" />
+        </label>
+        <p id="zakat-form-error" class="form-error" hidden></p>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" data-close>Cancel</button>
           <button type="submit" class="btn btn-primary">Save</button>

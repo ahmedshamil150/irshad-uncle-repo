@@ -208,6 +208,10 @@ const state = {
   loanRows: [],
   expSearch: "",
   expenseRows: [],
+  purchaseSearch: "",
+  purchaseRows: [],
+  zakatSearch: "",
+  zakatRows: [],
   payMax: 0,
   returnTo: null,
   returnSaleId: null,
@@ -216,8 +220,10 @@ const state = {
 const loaders = {
   dashboard: loadDashboard,
   sales: loadSales,
+  purchases: loadPurchases,
   loans: loadLoans,
   expenses: loadExpenses,
+  zakat: loadZakat,
   receivables: loadReceivables,
   payables: loadPayables,
 };
@@ -246,19 +252,21 @@ function applyRange(q, col) {
 async function loadDashboard() {
   busy(true);
   try {
-    const [salesR, lightR, paysR, payablesR] = await Promise.all([
+    const [salesR, lightR, paysR, payablesR, zakatR] = await Promise.all([
       applyRange(sb.from("sales").select("*"), "sale_date"),
       sb.from("sales").select("id,total_amount,cash_amount,bank_amount,loan_amount"),
       sb.from("payments").select("sale_id,payable_id,amount"),
       sb.from("payables").select("amount"),
+      applyRange(sb.from("zakat").select("amount"), "entry_date"),
     ]);
-    const errs = [salesR, lightR, paysR, payablesR].find((r) => r.error);
+    const errs = [salesR, lightR, paysR, payablesR, zakatR].find((r) => r.error);
     if (errs) throw errs.error;
 
     const sales = salesR.data || [];
     const light = lightR.data || [];
     const pays = paysR.data || [];
     const payables = payablesR.data || [];
+    const zakatRows = zakatR.data || [];
 
     const totalSale = sales.reduce((s, r) => s + num(r.total_amount), 0);
     const cash = sales.reduce((s, r) => s + num(r.cash_amount), 0);
@@ -286,6 +294,8 @@ async function loadDashboard() {
       { label: "Total sale", value: money(totalSale), tone: "brand", sub: rangeLabel() },
       { label: "Cash", value: money(cash), tone: "green" },
       { label: "Bank", value: money(bank), tone: "brand" },
+      { label: "Zakat", value: money(zakatRows.reduce((s, r) => s + num(r.amount), 0)), tone: "violet",
+        sub: `${zakatRows.length} entr${zakatRows.length === 1 ? "y" : "ies"} in this period` },
     ];
     /* loan is no longer an option on the sale form — only show it while old sales still carry one */
     if (loan > 0) cards.push({ label: "Loan", value: money(loan), tone: "violet" });
@@ -558,7 +568,7 @@ async function openSaleDetail(id) {
       <div class="row-title" style="font-size:18px">${esc(sale.customer_name)}
         <span class="badge badge-${sale.source}">${esc(srcName(sale.source))}</span>
       </div>
-      <div class="row-sub" style="margin-bottom:12px">${fmtDate(sale.sale_date)}${sale.item_description ? " · " + esc(itemsText(sale.item_description)) : ""}${sale.salesman_name ? " · " + esc(sale.salesman_name) : ""}</div>
+      <div class="row-sub" style="margin-bottom:12px">${fmtDate(sale.sale_date)}${sale.item_description ? " · " + esc(itemsText(sale.item_description)) : ""}${sale.salesman_name ? " · " + esc(sale.salesman_name) : ""}${sale.reference_name ? " · Ref: " + (sale.reference_type === "office" ? "In office — " : sale.reference_type === "salesman" ? "Salesman — " : "") + esc(sale.reference_name) : ""}</div>
 
       <div class="detail-grid">
         <div class="stat tone-brand"><div class="stat-label">Total sale</div><div class="stat-value">${money(sale.total_amount)}</div></div>
@@ -624,7 +634,17 @@ async function loadSalesmen() {
   $("#salesman-names").innerHTML = state.salesmen
     .map((s) => `<option value="${esc(s.name)}"></option>`)
     .join("");
+  syncRefNames();
   if (!$("#modal-salesmen").hidden) renderSalesmenList();
+}
+
+/* the reference-name suggestions follow the chosen reference type */
+function syncRefNames() {
+  const type = $("#sale-ref-type").value;
+  const names = type === "salesman" ? state.salesmen.map((s) => s.name) : [];
+  $("#ref-names").innerHTML = names
+    .map((n) => `<option value="${esc(n)}"></option>`)
+    .join("");
 }
 
 function renderSalesmenList() {
@@ -703,6 +723,9 @@ function openSaleForm(sale = null) {
   $("#sale-date").value = sale?.sale_date || todayISO();
   $("#sale-source").value = sale?.source || "office";
   $("#sale-salesman").value = sale?.salesman_name || "";
+  $("#sale-ref-type").value = sale?.reference_type || "";
+  $("#sale-ref-name").value = sale?.reference_name || "";
+  syncRefNames();
   $("#sale-customer").value = sale?.customer_name || "";
   renderItems(sale?.item_description);
   $("#sale-total").value = sale ? num(sale.total_amount) : "";
@@ -766,6 +789,7 @@ function syncItemChecks() {
 function syncSaleForm() {
   const src = $("#sale-source").value;
   $("#salesman-field").hidden = src !== "salesman";
+  $("#ref-name-field").hidden = !$("#sale-ref-type").value;
 
   const total = amt($("#sale-total").value);
   const paid = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-loan").value);
@@ -819,6 +843,8 @@ async function saveSale(e) {
   const id = $("#sale-id").value;
   const source = $("#sale-source").value;
   const customer = $("#sale-customer").value.trim();
+  const refType = $("#sale-ref-type").value;
+  const refName = $("#sale-ref-name").value.trim();
   const totalRaw = $("#sale-total").value.trim();
   const totalN = parseAmount(totalRaw);
   const cashN = parseAmount($("#sale-cash").value);
@@ -840,6 +866,7 @@ async function saveSale(e) {
   if (total <= 0) return fail("Enter the total sale amount.");
   if (cash + bank + loan > total + 0.009) return fail("The paid amount can't be more than the total sale.");
   if (source === "salesman" && !$("#sale-salesman").value.trim()) return fail("Please enter the salesman name.");
+  if (refType && !refName) return fail("Please enter the reference name.");
   if (isInst) {
     if (financed <= 0) return fail("For installments, leave some amount unpaid (total minus paid).");
     if (count < 1 || count > 120) return fail("Enter between 1 and 120 installments.");
@@ -851,6 +878,8 @@ async function saveSale(e) {
     customer_name: customer,
     source,
     salesman_name: source === "salesman" ? $("#sale-salesman").value.trim() : null,
+    reference_type: refType || null,
+    reference_name: refName || null,
     item_description: itemValues().join("\n") || null,
     total_amount: total,
     cash_amount: cash,
@@ -1354,6 +1383,257 @@ async function saveExpense(e) {
   }
 }
 
+/* ============ purchases (things we bought) ============ */
+async function loadPurchases() {
+  busy(true);
+  try {
+    const { data, error } = await sb
+      .from("purchases")
+      .select("*")
+      .order("entry_date", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    state.purchaseRows = data || [];
+    renderPurchases();
+  } finally {
+    busy(false);
+  }
+}
+
+function renderPurchases() {
+  const rows = state.purchaseRows;
+  const today = todayISO();
+  const month = today.slice(0, 7);
+  const year = today.slice(0, 4);
+  const inMonth = rows.filter((r) => String(r.entry_date).startsWith(month));
+  const inYear = rows.filter((r) => String(r.entry_date).startsWith(year));
+  const sum = (list) => list.reduce((s, r) => s + num(r.amount), 0);
+
+  $("#purchase-summary").innerHTML = `
+    <div class="stat tone-amber"><div class="stat-label">This month</div><div class="stat-value">${money(sum(inMonth))}</div><div class="stat-sub">${inMonth.length} purchase${inMonth.length === 1 ? "" : "s"}</div></div>
+    <div class="stat tone-brand"><div class="stat-label">This year</div><div class="stat-value">${money(sum(inYear))}</div><div class="stat-sub">${inYear.length} purchase${inYear.length === 1 ? "" : "s"}</div></div>
+    <div class="stat tone-red"><div class="stat-label">All time</div><div class="stat-value">${money(sum(rows))}</div><div class="stat-sub">${rows.length} recorded</div></div>`;
+
+  const q = state.purchaseSearch.toLowerCase();
+  const shown = rows.filter(
+    (r) =>
+      !q ||
+      (r.title || "").toLowerCase().includes(q) ||
+      (r.supplier || "").toLowerCase().includes(q) ||
+      (r.notes || "").toLowerCase().includes(q)
+  );
+
+  $("#purchase-list").innerHTML = shown.length
+    ? shown
+        .map(
+          (r) => `<div class="row" data-id="${r.id}">
+            <div class="row-main">
+              <div class="row-title">${esc(r.title)}</div>
+              <div class="row-sub">${fmtDate(r.entry_date)}${r.supplier ? " · " + esc(r.supplier) : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
+            </div>
+            <div class="row-right">
+              <div class="row-amount bal-due">${money(r.amount)}</div>
+              <div class="row-bal" style="color:var(--muted)">bought</div>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
+              <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
+            </div>
+          </div>`
+        )
+        .join("")
+    : `<div class="empty">${
+        q
+          ? "No matching purchase."
+          : "No purchases recorded yet. Tap “+ New purchase” when something is bought."
+      }</div>`;
+
+  $$("#purchase-list .row").forEach((el) => {
+    const r = rows.find((x) => x.id === el.dataset.id);
+    el.addEventListener("click", (e) => {
+      const act = e.target.closest("[data-act]")?.dataset.act;
+      if (act === "edit") openPurchaseForm(r);
+      else if (act === "del")
+        askConfirm("Delete this purchase?", `Delete ${r.title} (${money(r.amount)})?`, async () => {
+          busy(true);
+          const { error } = await sb.from("purchases").delete().eq("id", r.id);
+          busy(false);
+          if (error) return toast(error.message, true);
+          toast("Purchase deleted");
+          loadPurchases();
+        });
+      else openPurchaseForm(r);
+    });
+  });
+}
+
+function openPurchaseForm(r = null) {
+  $("#purchase-form").reset();
+  $("#purchase-form-error").hidden = true;
+  $("#purchase-id").value = r?.id || "";
+  $("#purchase-modal-title").textContent = r ? "Edit purchase" : "New purchase";
+  $("#purchase-date").value = r?.entry_date || todayISO();
+  $("#purchase-title").value = r?.title || "";
+  $("#purchase-supplier").value = r?.supplier || "";
+  $("#purchase-amount").value = r ? num(r.amount) : "";
+  $("#purchase-notes").value = r?.notes || "";
+  openModal("modal-purchase");
+}
+
+async function savePurchase(e) {
+  e.preventDefault();
+  const errEl = $("#purchase-form-error");
+  errEl.hidden = true;
+  const id = $("#purchase-id").value;
+  const amountN = parseAmount($("#purchase-amount").value);
+  const payload = {
+    entry_date: $("#purchase-date").value || todayISO(),
+    title: $("#purchase-title").value.trim(),
+    supplier: $("#purchase-supplier").value.trim() || null,
+    amount: round2(amountN),
+    notes: $("#purchase-notes").value.trim() || null,
+  };
+  if (!payload.title) { errEl.textContent = "Please enter what was bought."; errEl.hidden = false; return; }
+  if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
+  if (payload.amount <= 0) { errEl.textContent = "Enter how much was paid for it."; errEl.hidden = false; return; }
+
+  busy(true);
+  try {
+    const { error } = id
+      ? await sb.from("purchases").update(payload).eq("id", id)
+      : await sb.from("purchases").insert(payload);
+    if (error) throw error;
+    closeModals();
+    toast(id ? "Purchase updated" : "Purchase added");
+    loadPurchases();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    busy(false);
+  }
+}
+
+/* ============ zakat (money given out as zakat) ============ */
+async function loadZakat() {
+  busy(true);
+  try {
+    const { data, error } = await sb
+      .from("zakat")
+      .select("*")
+      .order("entry_date", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    state.zakatRows = data || [];
+    renderZakat();
+  } finally {
+    busy(false);
+  }
+}
+
+function renderZakat() {
+  const rows = state.zakatRows;
+  const today = todayISO();
+  const month = today.slice(0, 7);
+  const year = today.slice(0, 4);
+  const inMonth = rows.filter((r) => String(r.entry_date).startsWith(month));
+  const inYear = rows.filter((r) => String(r.entry_date).startsWith(year));
+  const sum = (list) => list.reduce((s, r) => s + num(r.amount), 0);
+
+  $("#zakat-summary").innerHTML = `
+    <div class="stat tone-amber"><div class="stat-label">This month</div><div class="stat-value">${money(sum(inMonth))}</div><div class="stat-sub">${inMonth.length} entr${inMonth.length === 1 ? "y" : "ies"}</div></div>
+    <div class="stat tone-brand"><div class="stat-label">This year</div><div class="stat-value">${money(sum(inYear))}</div><div class="stat-sub">${inYear.length} entr${inYear.length === 1 ? "y" : "ies"}</div></div>
+    <div class="stat tone-violet"><div class="stat-label">All time</div><div class="stat-value">${money(sum(rows))}</div><div class="stat-sub">${rows.length} recorded</div></div>`;
+
+  const q = state.zakatSearch.toLowerCase();
+  const shown = rows.filter((r) => !q || (r.notes || "").toLowerCase().includes(q));
+
+  $("#zakat-list").innerHTML = shown.length
+    ? shown
+        .map(
+          (r) => `<div class="row" data-id="${r.id}">
+            <div class="row-main">
+              <div class="row-title">${r.notes ? esc(r.notes) : "Zakat"}</div>
+              <div class="row-sub">${fmtDate(r.entry_date)}</div>
+            </div>
+            <div class="row-right">
+              <div class="row-amount bal-due">${money(r.amount)}</div>
+              <div class="row-bal" style="color:var(--muted)">given</div>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
+              <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
+            </div>
+          </div>`
+        )
+        .join("")
+    : `<div class="empty">${
+        q
+          ? "No matching zakat entry."
+          : "No zakat recorded yet. Tap “+ New zakat” when zakat is given."
+      }</div>`;
+
+  $$("#zakat-list .row").forEach((el) => {
+    const r = rows.find((x) => x.id === el.dataset.id);
+    el.addEventListener("click", (e) => {
+      const act = e.target.closest("[data-act]")?.dataset.act;
+      if (act === "edit") openZakatForm(r);
+      else if (act === "del")
+        askConfirm("Delete this zakat?", `Delete ${money(r.amount)} from ${fmtDate(r.entry_date)}?`, async () => {
+          busy(true);
+          const { error } = await sb.from("zakat").delete().eq("id", r.id);
+          busy(false);
+          if (error) return toast(error.message, true);
+          toast("Zakat entry deleted");
+          loadZakat();
+        });
+      else openZakatForm(r);
+    });
+  });
+}
+
+function openZakatForm(r = null) {
+  $("#zakat-form").reset();
+  $("#zakat-form-error").hidden = true;
+  $("#zakat-id").value = r?.id || "";
+  $("#zakat-modal-title").textContent = r ? "Edit zakat" : "New zakat";
+  $("#zakat-date").value = r?.entry_date || todayISO();
+  $("#zakat-amount").value = r ? num(r.amount) : "";
+  $("#zakat-notes").value = r?.notes || "";
+  openModal("modal-zakat");
+}
+
+async function saveZakat(e) {
+  e.preventDefault();
+  const errEl = $("#zakat-form-error");
+  errEl.hidden = true;
+  const id = $("#zakat-id").value;
+  const amountN = parseAmount($("#zakat-amount").value);
+  const payload = {
+    entry_date: $("#zakat-date").value || todayISO(),
+    amount: round2(amountN),
+    notes: $("#zakat-notes").value.trim() || null,
+  };
+  if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
+  if (payload.amount <= 0) { errEl.textContent = "Enter how much zakat was given."; errEl.hidden = false; return; }
+
+  busy(true);
+  try {
+    const { error } = id
+      ? await sb.from("zakat").update(payload).eq("id", id)
+      : await sb.from("zakat").insert(payload);
+    if (error) throw error;
+    closeModals();
+    toast(id ? "Zakat updated" : "Zakat added");
+    loadZakat();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    busy(false);
+  }
+}
+
 /* ============ payments ============ */
 function openPaymentModal(type, id, context, max) {
   state.returnTo = $$(".modal").find((m) => !m.hidden)?.id || null;
@@ -1519,6 +1799,7 @@ function bindEvents() {
   );
   $("#sale-installment").addEventListener("change", syncSaleForm);
   $("#sale-source").addEventListener("change", syncSaleForm);
+  $("#sale-ref-type").addEventListener("change", () => { syncRefNames(); syncSaleForm(); });
 
   /* item lines */
   $("#add-item-btn").addEventListener("click", () => {
@@ -1584,6 +1865,22 @@ function bindEvents() {
   $("#expense-search").addEventListener("input", (e) => {
     state.expSearch = e.target.value;
     renderExpenses();
+  });
+
+  /* purchases */
+  $("#new-purchase-btn").addEventListener("click", () => openPurchaseForm());
+  $("#purchase-form").addEventListener("submit", savePurchase);
+  $("#purchase-search").addEventListener("input", (e) => {
+    state.purchaseSearch = e.target.value;
+    renderPurchases();
+  });
+
+  /* zakat */
+  $("#new-zakat-btn").addEventListener("click", () => openZakatForm());
+  $("#zakat-form").addEventListener("submit", saveZakat);
+  $("#zakat-search").addEventListener("input", (e) => {
+    state.zakatSearch = e.target.value;
+    renderZakat();
   });
 
   /* payables / payment forms */
