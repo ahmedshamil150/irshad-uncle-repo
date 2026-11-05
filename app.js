@@ -252,14 +252,15 @@ function applyRange(q, col) {
 async function loadDashboard() {
   busy(true);
   try {
-    const [salesR, lightR, paysR, payablesR, zakatR] = await Promise.all([
+    const [salesR, lightR, paysR, payablesR, zakatR, purchR] = await Promise.all([
       applyRange(sb.from("sales").select("*"), "sale_date"),
       sb.from("sales").select("id,total_amount,cash_amount,bank_amount,loan_amount"),
       sb.from("payments").select("sale_id,payable_id,amount"),
       sb.from("payables").select("amount"),
       applyRange(sb.from("zakat").select("amount"), "entry_date"),
+      applyRange(sb.from("purchases").select("amount"), "entry_date"),
     ]);
-    const errs = [salesR, lightR, paysR, payablesR, zakatR].find((r) => r.error);
+    const errs = [salesR, lightR, paysR, payablesR, zakatR, purchR].find((r) => r.error);
     if (errs) throw errs.error;
 
     const sales = salesR.data || [];
@@ -267,6 +268,7 @@ async function loadDashboard() {
     const pays = paysR.data || [];
     const payables = payablesR.data || [];
     const zakatRows = zakatR.data || [];
+    const purchRows = purchR.data || [];
 
     const totalSale = sales.reduce((s, r) => s + num(r.total_amount), 0);
     const cash = sales.reduce((s, r) => s + num(r.cash_amount), 0);
@@ -296,6 +298,8 @@ async function loadDashboard() {
       { label: "Bank", value: money(bank), tone: "brand" },
       { label: "Zakat", value: money(zakatRows.reduce((s, r) => s + num(r.amount), 0)), tone: "violet",
         sub: `${zakatRows.length} entr${zakatRows.length === 1 ? "y" : "ies"} in this period` },
+      { label: "Purchases", value: money(purchRows.reduce((s, r) => s + num(r.amount), 0)), tone: "amber",
+        sub: `${purchRows.length} purchase${purchRows.length === 1 ? "" : "s"} in this period` },
     ];
     /* loan is no longer an option on the sale form — only show it while old sales still carry one */
     if (loan > 0) cards.push({ label: "Loan", value: money(loan), tone: "violet" });
@@ -737,13 +741,20 @@ function openSaleForm(sale = null) {
   /* open the optional sections only when there is something to show */
   const paidAlready = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-loan").value);
   $("#sale-pay-disclose").open = paidAlready > 0;
-  $("#sale-more-disclose").open = !!sale && (sale.is_installment || !!sale.notes);
+  $("#sale-more-disclose").open = !!sale && sale.is_installment;   /* notes live with the sale now, not in here */
 
   syncSaleForm();
   openModal("modal-sale");
 }
 
 /* ---- item lines (one per machine/item) ---- */
+/* The sale form and the purchase form share one picker procedure;
+   each form just points at its own elements. */
+const PICKERS = {
+  sale:     { list: "#sale-items",         checks: "#item-checks",          machine: "#machine-picker",          add: "#add-item-btn" },
+  purchase: { list: "#purchase-items",     checks: "#purchase-item-checks", machine: "#purchase-machine-picker", add: "#add-purchase-item-btn" },
+};
+
 function itemRow(value = "") {
   const row = document.createElement("div");
   row.className = "item-row";
@@ -753,34 +764,34 @@ function itemRow(value = "") {
   row.querySelector("input").value = value;
   return row;
 }
-function renderItems(stored) {
-  const box = $("#sale-items");
+function renderItems(stored, scope = "sale") {
+  const box = $(PICKERS[scope].list);
   box.innerHTML = "";
   const list = String(stored || "").split("\n").map((x) => x.trim()).filter(Boolean);
   (list.length ? list : [""]).forEach((v) => box.appendChild(itemRow(v)));
-  syncItemChecks();
+  syncItemChecks(scope);
 }
-const itemValues = () =>
-  $$("#sale-items .item-input").map((i) => i.value.trim()).filter(Boolean);
+const itemValues = (scope = "sale") =>
+  $$(PICKERS[scope].list + " .item-input").map((i) => i.value.trim()).filter(Boolean);
 
 /* ---- machine dropdown + printer/probe checkboxes ---- */
 /* A picked machine or ticked box becomes one line in the item list;
    unticking removes that exact line, and lines typed by hand tick the boxes back. */
-function addNewItem(value) {
+function addNewItem(value, scope = "sale") {
   const v = String(value || "").trim();
   if (!v) return;
-  const empty = $$("#sale-items .item-input").find((i) => !i.value.trim());
+  const empty = $$(PICKERS[scope].list + " .item-input").find((i) => !i.value.trim());
   if (empty) empty.value = v;
-  else $("#sale-items").appendChild(itemRow(v));
+  else $(PICKERS[scope].list).appendChild(itemRow(v));
 }
-function removeItemRow(value) {
+function removeItemRow(value, scope = "sale") {
   const want = String(value || "").trim().toLowerCase();
-  const hit = $$("#sale-items .item-input").find((i) => i.value.trim().toLowerCase() === want);
+  const hit = $$(PICKERS[scope].list + " .item-input").find((i) => i.value.trim().toLowerCase() === want);
   if (hit) hit.closest(".item-row").remove();
 }
-function syncItemChecks() {
-  const have = itemValues().map((v) => v.toLowerCase());
-  $$("#item-checks input").forEach((cb) => { cb.checked = have.includes(cb.value.toLowerCase()); });
+function syncItemChecks(scope = "sale") {
+  const have = itemValues(scope).map((v) => v.toLowerCase());
+  $$(PICKERS[scope].checks + " input").forEach((cb) => { cb.checked = have.includes(cb.value.toLowerCase()); });
 }
 
 function syncSaleForm() {
@@ -1379,6 +1390,9 @@ async function saveExpense(e) {
 }
 
 /* ============ purchases (things we bought) ============ */
+/* item lines are stored newline-joined in title — one line per item, like a sale */
+const oneLine = (s) => String(s || "").replace(/\s*\n\s*/g, " · ");
+
 async function loadPurchases() {
   busy(true);
   try {
@@ -1423,7 +1437,7 @@ function renderPurchases() {
         .map(
           (r) => `<div class="row" data-id="${r.id}">
             <div class="row-main">
-              <div class="row-title">${esc(r.title)}</div>
+              <div class="row-title">${esc(oneLine(r.title))}</div>
               <div class="row-sub">${fmtDate(r.entry_date)}${r.supplier ? " · " + esc(r.supplier) : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
             </div>
             <div class="row-right">
@@ -1449,7 +1463,7 @@ function renderPurchases() {
       const act = e.target.closest("[data-act]")?.dataset.act;
       if (act === "edit") openPurchaseForm(r);
       else if (act === "del")
-        askConfirm("Delete this purchase?", `Delete ${r.title} (${money(r.amount)})?`, async () => {
+        askConfirm("Delete this purchase?", `Delete ${oneLine(r.title)} (${money(r.amount)})?`, async () => {
           busy(true);
           const { error } = await sb.from("purchases").delete().eq("id", r.id);
           busy(false);
@@ -1468,7 +1482,7 @@ function openPurchaseForm(r = null) {
   $("#purchase-id").value = r?.id || "";
   $("#purchase-modal-title").textContent = r ? "Edit purchase" : "New purchase";
   $("#purchase-date").value = r?.entry_date || todayISO();
-  $("#purchase-title").value = r?.title || "";
+  renderItems(r?.title, "purchase");
   $("#purchase-supplier").value = r?.supplier || "";
   $("#purchase-amount").value = r ? num(r.amount) : "";
   $("#purchase-notes").value = r?.notes || "";
@@ -1481,14 +1495,15 @@ async function savePurchase(e) {
   errEl.hidden = true;
   const id = $("#purchase-id").value;
   const amountN = parseAmount($("#purchase-amount").value);
+  const items = itemValues("purchase");
   const payload = {
     entry_date: $("#purchase-date").value || todayISO(),
-    title: $("#purchase-title").value.trim(),
+    title: items.join("\n"),
     supplier: $("#purchase-supplier").value.trim() || null,
     amount: round2(amountN),
     notes: $("#purchase-notes").value.trim() || null,
   };
-  if (!payload.title) { errEl.textContent = "Please enter what was bought."; errEl.hidden = false; return; }
+  if (!items.length) { errEl.textContent = "Please enter what was bought — pick a machine, tick the boxes, or add a line."; errEl.hidden = false; return; }
   if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
   if (payload.amount <= 0) { errEl.textContent = "Enter how much was paid for it."; errEl.hidden = false; return; }
 
@@ -1795,41 +1810,44 @@ function bindEvents() {
   $("#sale-installment").addEventListener("change", syncSaleForm);
   $("#sale-source").addEventListener("change", syncSaleForm);
 
-  /* item lines */
-  $("#add-item-btn").addEventListener("click", () => {
-    const row = itemRow();
-    $("#sale-items").appendChild(row);
-    row.querySelector("input").focus();
-  });
-  $("#sale-items").addEventListener("click", (e) => {
-    const del = e.target.closest(".item-del");
-    if (del) { del.closest(".item-row").remove(); syncItemChecks(); }
-  });
-  $("#sale-items").addEventListener("input", syncItemChecks);   /* typing "Printer" by hand ticks its box */
-  $("#sale-items").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && e.target.classList.contains("item-input")) {
-      e.preventDefault();
+  /* item lines — the sale form and the purchase form share one procedure */
+  for (const scope of Object.keys(PICKERS)) {
+    const p = PICKERS[scope];
+    $(p.add).addEventListener("click", () => {
       const row = itemRow();
-      $("#sale-items").appendChild(row);
+      $(p.list).appendChild(row);
       row.querySelector("input").focus();
-    }
-  });
+    });
+    $(p.list).addEventListener("click", (e) => {
+      const del = e.target.closest(".item-del");
+      if (del) { del.closest(".item-row").remove(); syncItemChecks(scope); }
+    });
+    $(p.list).addEventListener("input", () => syncItemChecks(scope));   /* typing "Printer" by hand ticks its box */
+    $(p.list).addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.target.classList.contains("item-input")) {
+        e.preventDefault();
+        const row = itemRow();
+        $(p.list).appendChild(row);
+        row.querySelector("input").focus();
+      }
+    });
 
-  /* machine dropdown → adds a line, then resets so the same type can be picked again */
-  $("#machine-picker").addEventListener("change", (e) => {
-    if (!e.target.value) return;
-    addNewItem(e.target.value);
-    e.target.value = "";
-  });
+    /* machine dropdown → adds a line, then resets so the same type can be picked again */
+    $(p.machine).addEventListener("change", (e) => {
+      if (!e.target.value) return;
+      addNewItem(e.target.value, scope);
+      e.target.value = "";
+    });
 
-  /* printer / probes → tick adds a line, untick removes that exact line */
-  $("#item-checks").addEventListener("change", (e) => {
-    const cb = e.target.closest("input[type=checkbox]");
-    if (!cb) return;
-    if (cb.checked) addNewItem(cb.value);
-    else removeItemRow(cb.value);
-    syncItemChecks();
-  });
+    /* printer / probes → tick adds a line, untick removes that exact line */
+    $(p.checks).addEventListener("change", (e) => {
+      const cb = e.target.closest("input[type=checkbox]");
+      if (!cb) return;
+      if (cb.checked) addNewItem(cb.value, scope);
+      else removeItemRow(cb.value, scope);
+      syncItemChecks(scope);
+    });
+  }
 
   /* money fields: focus selects everything, blur turns 5lac into 500000 */
   document.addEventListener("focusin", (e) => {
