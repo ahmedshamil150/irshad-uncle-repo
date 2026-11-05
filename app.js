@@ -314,10 +314,10 @@ async function loadDashboard() {
       .join("");
 
     /* source split */
-    const src = { office: 0, dealer: 0, salesman: 0 };
+    const src = { office: 0, dealer: 0, salesman: 0, reference: 0 };
     for (const r of sales) src[r.source] = (src[r.source] || 0) + num(r.total_amount);
     const max = Math.max(...Object.values(src), 1);
-    $("#source-split").innerHTML = ["office", "dealer", "salesman"]
+    $("#source-split").innerHTML = ["office", "dealer", "salesman", "reference"]
       .map(
         (k) => `<div class="src-row" data-src="${k}">
           <div class="src-head"><span>${srcName(k)} sale</span><b>${money(src[k])}</b></div>
@@ -568,7 +568,7 @@ async function openSaleDetail(id) {
       <div class="row-title" style="font-size:18px">${esc(sale.customer_name)}
         <span class="badge badge-${sale.source}">${esc(srcName(sale.source))}</span>
       </div>
-      <div class="row-sub" style="margin-bottom:12px">${fmtDate(sale.sale_date)}${sale.item_description ? " · " + esc(itemsText(sale.item_description)) : ""}${sale.salesman_name ? " · " + esc(sale.salesman_name) : ""}${sale.reference_name ? " · Ref: " + (sale.reference_type === "office" ? "In office — " : sale.reference_type === "salesman" ? "Salesman — " : "") + esc(sale.reference_name) : ""}</div>
+      <div class="row-sub" style="margin-bottom:12px">${fmtDate(sale.sale_date)}${sale.item_description ? " · " + esc(itemsText(sale.item_description)) : ""}${sale.salesman_name ? " · " + esc(sale.salesman_name) : ""}${sale.reference_name ? " · Ref: " + esc(sale.reference_name) : ""}</div>
 
       <div class="detail-grid">
         <div class="stat tone-brand"><div class="stat-label">Total sale</div><div class="stat-value">${money(sale.total_amount)}</div></div>
@@ -638,12 +638,10 @@ async function loadSalesmen() {
   if (!$("#modal-salesmen").hidden) renderSalesmenList();
 }
 
-/* the reference-name suggestions follow the chosen reference type */
+/* suggestions for the reference name: our saved salesmen (a referrer is often one) */
 function syncRefNames() {
-  const type = $("#sale-ref-type").value;
-  const names = type === "salesman" ? state.salesmen.map((s) => s.name) : [];
-  $("#ref-names").innerHTML = names
-    .map((n) => `<option value="${esc(n)}"></option>`)
+  $("#ref-names").innerHTML = state.salesmen
+    .map((s) => `<option value="${esc(s.name)}"></option>`)
     .join("");
 }
 
@@ -723,8 +721,7 @@ function openSaleForm(sale = null) {
   $("#sale-date").value = sale?.sale_date || todayISO();
   $("#sale-source").value = sale?.source || "office";
   $("#sale-salesman").value = sale?.salesman_name || "";
-  $("#sale-ref-type").value = sale?.reference_type || "";
-  $("#sale-ref-name").value = sale?.reference_name || "";
+  $("#sale-reference").value = sale?.reference_name || "";
   syncRefNames();
   $("#sale-customer").value = sale?.customer_name || "";
   renderItems(sale?.item_description);
@@ -789,7 +786,7 @@ function syncItemChecks() {
 function syncSaleForm() {
   const src = $("#sale-source").value;
   $("#salesman-field").hidden = src !== "salesman";
-  $("#ref-name-field").hidden = !$("#sale-ref-type").value;
+  $("#reference-field").hidden = src !== "reference";
 
   const total = amt($("#sale-total").value);
   const paid = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-loan").value);
@@ -843,8 +840,7 @@ async function saveSale(e) {
   const id = $("#sale-id").value;
   const source = $("#sale-source").value;
   const customer = $("#sale-customer").value.trim();
-  const refType = $("#sale-ref-type").value;
-  const refName = $("#sale-ref-name").value.trim();
+  const refName = $("#sale-reference").value.trim();
   const totalRaw = $("#sale-total").value.trim();
   const totalN = parseAmount(totalRaw);
   const cashN = parseAmount($("#sale-cash").value);
@@ -866,7 +862,7 @@ async function saveSale(e) {
   if (total <= 0) return fail("Enter the total sale amount.");
   if (cash + bank + loan > total + 0.009) return fail("The paid amount can't be more than the total sale.");
   if (source === "salesman" && !$("#sale-salesman").value.trim()) return fail("Please enter the salesman name.");
-  if (refType && !refName) return fail("Please enter the reference name.");
+  if (source === "reference" && !refName) return fail("Please enter the reference name.");
   if (isInst) {
     if (financed <= 0) return fail("For installments, leave some amount unpaid (total minus paid).");
     if (count < 1 || count > 120) return fail("Enter between 1 and 120 installments.");
@@ -878,8 +874,7 @@ async function saveSale(e) {
     customer_name: customer,
     source,
     salesman_name: source === "salesman" ? $("#sale-salesman").value.trim() : null,
-    reference_type: refType || null,
-    reference_name: refName || null,
+    reference_name: source === "reference" ? refName : null,
     item_description: itemValues().join("\n") || null,
     total_amount: total,
     cash_amount: cash,
@@ -1799,7 +1794,6 @@ function bindEvents() {
   );
   $("#sale-installment").addEventListener("change", syncSaleForm);
   $("#sale-source").addEventListener("change", syncSaleForm);
-  $("#sale-ref-type").addEventListener("change", () => { syncRefNames(); syncSaleForm(); });
 
   /* item lines */
   $("#add-item-btn").addEventListener("click", () => {

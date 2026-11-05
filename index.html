@@ -107,10 +107,11 @@
           <div class="filter-grid">
             <label class="field"><span>Sold through</span>
               <select id="sf-source">
-                <option value="">All — office, dealer &amp; salesman</option>
+                <option value="">All — office, dealer, salesman &amp; reference</option>
                 <option value="office">Office only</option>
                 <option value="dealer">Dealer only</option>
                 <option value="salesman">Salesman only</option>
+                <option value="reference">Reference only</option>
               </select>
             </label>
             <label class="field"><span>Salesman</span>
@@ -275,8 +276,9 @@
               <option value="office">Office</option>
               <option value="dealer">Dealer</option>
               <option value="salesman">Salesman</option>
+              <option value="reference">Reference</option>
             </select>
-            <small class="hint">Office, dealer, or one of our salesmen.</small>
+            <small class="hint">Office, dealer, one of our salesmen — or a reference who referred the sale.</small>
           </label>
         </div>
 
@@ -289,18 +291,10 @@
           <small class="hint">Pick a name from the list, or tap + Add to save a new one.</small>
         </label>
 
-        <label class="field"><span>Reference</span>
-          <select id="sale-ref-type">
-            <option value="">No reference</option>
-            <option value="office">In office</option>
-            <option value="salesman">Salesman</option>
-          </select>
-          <small class="hint">Someone referred this sale? Choose “In office” or “Salesman”.</small>
-        </label>
-        <label class="field" id="ref-name-field" hidden><span>Reference name *</span>
-          <input type="text" id="sale-ref-name" list="ref-names" placeholder="Name of the reference" />
+        <label class="field" id="reference-field" hidden><span>Reference name *</span>
+          <input type="text" id="sale-reference" list="ref-names" placeholder="Name of the reference" />
           <datalist id="ref-names"></datalist>
-          <small class="hint">Write the name of the reference.</small>
+          <small class="hint">Write the name of the person who referred this sale.</small>
         </label>
 
         <label class="field"><span>Customer name *</span>

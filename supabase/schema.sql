@@ -13,7 +13,7 @@ create table if not exists public.sales (
   updated_at     timestamptz not null default now(),
   sale_date      date not null default current_date,
   customer_name  text not null,
-  source         text not null check (source in ('office','dealer','salesman')),
+  source         text not null check (source in ('office','dealer','salesman','reference')),
   salesman_name  text,
   item_description text,
   total_amount   numeric(14,2) not null check (total_amount >= 0),

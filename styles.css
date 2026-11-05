@@ -226,6 +226,7 @@ h1, h2, h3 { margin: 0; }
 .src-fill { height: 100%; border-radius: 6px; background: var(--brand); }
 .src-row[data-src="dealer"] .src-fill { background: var(--violet); }
 .src-row[data-src="salesman"] .src-fill { background: var(--green); }
+.src-row[data-src="reference"] .src-fill { background: var(--amber); }
 
 /* ===== Toolbar ===== */
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
@@ -290,6 +291,7 @@ h1, h2, h3 { margin: 0; }
 .badge-office { background: var(--brand-soft); color: var(--brand); }
 .badge-dealer { background: var(--violet-soft); color: var(--violet); }
 .badge-salesman { background: var(--green-soft); color: var(--green); }
+.badge-reference { background: var(--amber-soft); color: var(--amber); }
 .badge-cash { background: var(--green-soft); color: var(--green); }
 .badge-bank { background: var(--brand-soft); color: var(--brand); }
 .badge-paid { background: var(--green-soft); color: var(--green); }
