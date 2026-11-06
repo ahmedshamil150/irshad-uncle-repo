@@ -19,10 +19,11 @@ create table if not exists public.sales (
   total_amount   numeric(14,2) not null check (total_amount >= 0),
   cash_amount    numeric(14,2) not null default 0 check (cash_amount >= 0),
   bank_amount    numeric(14,2) not null default 0 check (bank_amount >= 0),
+  adjustment_amount numeric(14,2) not null default 0 check (adjustment_amount >= 0),
   loan_amount    numeric(14,2) not null default 0 check (loan_amount >= 0),
   is_installment boolean not null default false,
   notes          text,
-  constraint paid_within_total check (cash_amount + bank_amount + loan_amount <= total_amount + 0.009)
+  constraint paid_within_total check (cash_amount + bank_amount + adjustment_amount + loan_amount <= total_amount + 0.009)
 );
 
 create table if not exists public.installments (

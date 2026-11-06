@@ -254,7 +254,7 @@ async function loadDashboard() {
   try {
     const [salesR, lightR, paysR, payablesR, zakatR, purchR] = await Promise.all([
       applyRange(sb.from("sales").select("*"), "sale_date"),
-      sb.from("sales").select("id,total_amount,cash_amount,bank_amount,loan_amount"),
+      sb.from("sales").select("id,total_amount,cash_amount,bank_amount,adjustment_amount,loan_amount"),
       sb.from("payments").select("sale_id,payable_id,amount"),
       sb.from("payables").select("amount"),
       applyRange(sb.from("zakat").select("amount"), "entry_date"),
@@ -273,6 +273,7 @@ async function loadDashboard() {
     const totalSale = sales.reduce((s, r) => s + num(r.total_amount), 0);
     const cash = sales.reduce((s, r) => s + num(r.cash_amount), 0);
     const bank = sales.reduce((s, r) => s + num(r.bank_amount), 0);
+    const adjustment = sales.reduce((s, r) => s + num(r.adjustment_amount), 0);
     const loan = sales.reduce((s, r) => s + num(r.loan_amount), 0);
 
     const paidForSale = {};
@@ -283,7 +284,7 @@ async function loadDashboard() {
     }
     let recv = 0, recvCount = 0;
     for (const r of light) {
-      const due = num(r.total_amount) - num(r.cash_amount) - num(r.bank_amount) - num(r.loan_amount);
+      const due = num(r.total_amount) - num(r.cash_amount) - num(r.bank_amount) - num(r.adjustment_amount) - num(r.loan_amount);
       const saleId = r.id;
       const bal = due - (paidForSale[saleId] || 0);
       if (bal > 0.009) { recv += bal; recvCount++; }
@@ -296,6 +297,7 @@ async function loadDashboard() {
       { label: "Total sale", value: money(totalSale), tone: "brand", sub: rangeLabel() },
       { label: "Cash", value: money(cash), tone: "green" },
       { label: "Bank", value: money(bank), tone: "brand" },
+      ...(adjustment > 0 ? [{ label: "Adjustment", value: money(adjustment), tone: "brand", sub: "Old machines taken in trade" }] : []),
       { label: "Zakat", value: money(zakatRows.reduce((s, r) => s + num(r.amount), 0)), tone: "violet",
         sub: `${zakatRows.length} entr${zakatRows.length === 1 ? "y" : "ies"} in this period` },
       { label: "Purchases", value: money(purchRows.reduce((s, r) => s + num(r.amount), 0)), tone: "amber",
@@ -390,7 +392,7 @@ async function loadSales() {
 
 function saleOutstanding(r) {
   return round2(
-    num(r.total_amount) - num(r.cash_amount) - num(r.bank_amount) - num(r.loan_amount) - (state.salesPay[r.id] || 0)
+    num(r.total_amount) - num(r.cash_amount) - num(r.bank_amount) - num(r.adjustment_amount) - num(r.loan_amount) - (state.salesPay[r.id] || 0)
   );
 }
 
@@ -529,7 +531,7 @@ async function openSaleDetail(id) {
     const inst = iR.data || [];
     const pays = pR.data || [];
 
-    const paidAtSale = num(sale.cash_amount) + num(sale.bank_amount) + num(sale.loan_amount);
+    const paidAtSale = num(sale.cash_amount) + num(sale.bank_amount) + num(sale.adjustment_amount) + num(sale.loan_amount);
     const received = pays.reduce((s, p) => s + num(p.amount), 0);
     const outstanding = round2(num(sale.total_amount) - paidAtSale - received);
 
@@ -577,7 +579,7 @@ async function openSaleDetail(id) {
       <div class="detail-grid">
         <div class="stat tone-brand"><div class="stat-label">Total sale</div><div class="stat-value">${money(sale.total_amount)}</div></div>
         <div class="stat tone-green"><div class="stat-label">Paid upfront</div><div class="stat-value">${money(paidAtSale)}</div>
-          <div class="stat-sub">Cash ${money(sale.cash_amount)} · Bank ${money(sale.bank_amount)} · Loan ${money(sale.loan_amount)}</div></div>
+          <div class="stat-sub">Cash ${money(sale.cash_amount)} · Bank ${money(sale.bank_amount)}${num(sale.adjustment_amount) > 0 ? ` · Adjustment ${money(sale.adjustment_amount)}` : ""}${num(sale.loan_amount) > 0 ? ` · Loan ${money(sale.loan_amount)}` : ""}</div></div>
         <div class="stat tone-violet"><div class="stat-label">Payments received</div><div class="stat-value">${money(received)}</div></div>
         <div class="stat ${outstanding > 0.009 ? "tone-red" : "tone-green"}"><div class="stat-label">Left to receive</div>
           <div class="stat-value">${money(Math.max(outstanding, 0))}</div></div>
@@ -732,6 +734,7 @@ function openSaleForm(sale = null) {
   $("#sale-total").value = sale ? num(sale.total_amount) : "";
   $("#sale-cash").value = sale && num(sale.cash_amount) ? num(sale.cash_amount) : "";
   $("#sale-bank").value = sale && num(sale.bank_amount) ? num(sale.bank_amount) : "";
+  $("#sale-adjustment").value = sale && num(sale.adjustment_amount) ? num(sale.adjustment_amount) : "";
   $("#sale-loan").value = sale ? num(sale.loan_amount) : 0;
   $("#sale-installment").checked = !!sale?.is_installment;
   $("#sale-notes").value = sale?.notes || "";
@@ -739,7 +742,7 @@ function openSaleForm(sale = null) {
   $("#inst-first").value = todayISO();
 
   /* open the optional sections only when there is something to show */
-  const paidAlready = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-loan").value);
+  const paidAlready = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-adjustment").value) + amt($("#sale-loan").value);
   $("#sale-pay-disclose").open = paidAlready > 0;
   $("#sale-more-disclose").open = !!sale && sale.is_installment;   /* notes live with the sale now, not in here */
 
@@ -800,12 +803,15 @@ function syncSaleForm() {
   $("#reference-field").hidden = src !== "reference";
 
   const total = amt($("#sale-total").value);
-  const paid = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-loan").value);
+  const paid = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-adjustment").value) + amt($("#sale-loan").value);
+  const adj = amt($("#sale-adjustment").value);
   const due = round2(total - paid);
   $("#sale-paid-summary").innerHTML =
     total <= 0
       ? `Enter the total above — what is paid and what is left shows here.`
-      : `Paid now: <b>${money(paid)}</b> &nbsp;·&nbsp; Left to pay: <b>${money(Math.max(due, 0))}</b>` +
+      : `Paid now: <b>${money(paid)}</b>` +
+        (adj > 0 ? ` (incl. <b>${money(adj)} adjustment</b>)` : "") +
+        ` &nbsp;·&nbsp; Left to pay: <b>${money(Math.max(due, 0))}</b>` +
         (paid > total + 0.009 ? `<br><span style="color:var(--red)">The paid amount is more than the total — fix it before saving.</span>` : "");
 
   const inst = $("#sale-installment").checked;
@@ -828,7 +834,7 @@ function buildSchedule(financed, count, firstDue) {
 
 function renderInstPreview() {
   const total = amt($("#sale-total").value);
-  const paid = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-loan").value);
+  const paid = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-adjustment").value) + amt($("#sale-loan").value);
   const financed = round2(total - paid);
   const count = Math.max(1, Math.min(120, parseInt($("#inst-count").value, 10) || 0));
   const first = $("#inst-first").value;
@@ -856,6 +862,7 @@ async function saveSale(e) {
   const totalN = parseAmount(totalRaw);
   const cashN = parseAmount($("#sale-cash").value);
   const bankN = parseAmount($("#sale-bank").value);
+  const adjN = parseAmount($("#sale-adjustment").value);
   const loanN = parseAmount($("#sale-loan").value);
   const isInst = $("#sale-installment").checked;
   const count = parseInt($("#inst-count").value, 10) || 0;
@@ -864,14 +871,15 @@ async function saveSale(e) {
   const fail = (m) => { errEl.textContent = m; errEl.hidden = false; };
   if (!customer) return fail("Please enter the customer name.");
   if (!totalRaw) return fail("Enter the total sale amount.");
-  if ([totalN, cashN, bankN, loanN].some(Number.isNaN)) return fail(AMOUNT_HINT);
+  if ([totalN, cashN, bankN, adjN, loanN].some(Number.isNaN)) return fail(AMOUNT_HINT);
   const total = round2(totalN);
   const cash = round2(cashN);
   const bank = round2(bankN);
+  const adjustment = round2(adjN);
   const loan = round2(loanN);
-  const financed = round2(total - cash - bank - loan);
+  const financed = round2(total - cash - bank - adjustment - loan);
   if (total <= 0) return fail("Enter the total sale amount.");
-  if (cash + bank + loan > total + 0.009) return fail("The paid amount can't be more than the total sale.");
+  if (cash + bank + adjustment + loan > total + 0.009) return fail("The paid amount can't be more than the total sale.");
   if (source === "salesman" && !$("#sale-salesman").value.trim()) return fail("Please enter the salesman name.");
   if (source === "reference" && !refName) return fail("Please enter the reference name.");
   if (isInst) {
@@ -890,6 +898,7 @@ async function saveSale(e) {
     total_amount: total,
     cash_amount: cash,
     bank_amount: bank,
+    adjustment_amount: adjustment,
     loan_amount: loan,
     is_installment: isInst,
     notes: $("#sale-notes").value.trim() || null,
@@ -959,7 +968,7 @@ async function loadReceivables() {
 
     const overdueIds = new Set((iR.data || []).map((r) => r.sale_id));
     const open = sR.data
-      .map((r) => ({ ...r, bal: round2(num(r.total_amount) - num(r.cash_amount) - num(r.bank_amount) - num(r.loan_amount) - (pay[r.id] || 0)) }))
+      .map((r) => ({ ...r, bal: round2(num(r.total_amount) - num(r.cash_amount) - num(r.bank_amount) - num(r.adjustment_amount) - num(r.loan_amount) - (pay[r.id] || 0)) }))
       .filter((r) => r.bal > 0.009);
 
     const total = open.reduce((s, r) => s + r.bal, 0);
@@ -1804,7 +1813,7 @@ function bindEvents() {
 
   /* sale form */
   $("#sale-form").addEventListener("submit", saveSale);
-  ["sale-total", "sale-cash", "sale-bank", "sale-loan", "sale-source", "sale-installment", "inst-count", "inst-first"].forEach(
+  ["sale-total", "sale-cash", "sale-bank", "sale-adjustment", "sale-loan", "sale-source", "sale-installment", "inst-count", "inst-first"].forEach(
     (id) => $("#" + id).addEventListener("input", syncSaleForm)
   );
   $("#sale-installment").addEventListener("change", syncSaleForm);

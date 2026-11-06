@@ -356,15 +356,18 @@
         <details class="disclose" id="sale-pay-disclose">
           <summary>How was it paid? (optional)</summary>
           <div class="disclose-body">
-            <div class="grid-2">
+            <div class="grid-3">
               <label class="field"><span>Cash (Rs)</span>
                 <input type="text" id="sale-cash" class="amt" inputmode="decimal" autocomplete="off" placeholder="0" />
               </label>
               <label class="field"><span>Bank (Rs)</span>
                 <input type="text" id="sale-bank" class="amt" inputmode="decimal" autocomplete="off" placeholder="0" />
               </label>
+              <label class="field"><span>Adjustment (Rs)</span>
+                <input type="text" id="sale-adjustment" class="amt" inputmode="decimal" autocomplete="off" placeholder="0" />
+              </label>
             </div>
-            <small class="hint">Leave these empty if nothing was paid on the spot. Amounts can be written as 5lac, 50hazar or 2cr.</small>
+            <small class="hint"><b>Adjustment</b> = worth of an old machine given in trade — it counts as paid, and what is left over is what goes to installments. Leave empty if none. Amounts can be written as 5lac, 50hazar or 2cr.</small>
           </div>
         </details>
 
