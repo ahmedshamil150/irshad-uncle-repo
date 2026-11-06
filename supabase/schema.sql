@@ -95,7 +95,8 @@ create table if not exists public.purchases (
   title      text not null,
   supplier   text,
   amount     numeric(14,2) not null check (amount > 0),
-  notes      text
+  notes      text,
+  mode       text not null default 'batch' check (mode in ('batch','local'))
 );
 
 -- Zakat: money given out as zakat.
