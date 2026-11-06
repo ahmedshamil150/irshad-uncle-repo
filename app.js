@@ -741,6 +741,20 @@ function openSaleForm(sale = null) {
   $("#inst-count").value = 12;
   $("#inst-first").value = todayISO();
 
+  /* editing an installment sale: load ITS schedule (count + first due date),
+     not the defaults — otherwise saving would silently rebuild it as 12 × today */
+  if (sale?.is_installment && sale.id) {
+    const editingId = sale.id;
+    sb.from("installments").select("due_date").eq("sale_id", editingId).order("installment_no", { ascending: true })
+      .then(({ data, error }) => {
+        if (error || !data || !data.length) return;
+        if ($("#sale-id").value !== editingId || $("#modal-sale").hidden) return;   /* modal closed or switched */
+        $("#inst-count").value = String(Math.min(120, Math.max(1, data.length)));
+        $("#inst-first").value = data[0].due_date;
+        syncSaleForm();
+      });
+  }
+
   /* open the optional sections only when there is something to show */
   const paidAlready = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-adjustment").value) + amt($("#sale-loan").value);
   $("#sale-pay-disclose").open = paidAlready > 0;
@@ -916,27 +930,21 @@ async function saveSale(e) {
       saleId = data.id;
     }
 
+    /* The schedule always follows what the form says — even when payments exist.
+       Payment allocation and "overdue" are computed live from these rows, so they
+       stay correct after a rebuild. Editing also clears a stale schedule when
+       installments are unchecked. */
+    if (id) {
+      const { error: delErr } = await sb.from("installments").delete().eq("sale_id", saleId);
+      if (delErr) throw delErr;
+    }
     if (isInst) {
-      const [pR, iR] = await Promise.all([
-        sb.from("payments").select("id").eq("sale_id", saleId).limit(1),
-        sb.from("installments").select("id").eq("sale_id", saleId).limit(1),
-      ]);
-      if (pR.error) throw pR.error;
-      const hasPayments = (pR.data || []).length > 0;
-      const hasSchedule = !(iR.error) && (iR.data || []).length > 0;
-
-      if (!hasPayments) {
-        const { error: delErr } = await sb.from("installments").delete().eq("sale_id", saleId);
-        if (delErr) throw delErr;
-        const rows = buildSchedule(financed, count, first).map((r) => ({
-          sale_id: saleId, installment_no: r.no, due_date: r.due, amount: r.amount,
-        }));
-        if (rows.length) {
-          const { error } = await sb.from("installments").insert(rows);
-          if (error) throw error;
-        }
-      } else if (hasSchedule) {
-        toast("Sale saved. Existing installments kept because payments are already recorded.");
+      const rows = buildSchedule(financed, count, first).map((r) => ({
+        sale_id: saleId, installment_no: r.no, due_date: r.due, amount: r.amount,
+      }));
+      if (rows.length) {
+        const { error } = await sb.from("installments").insert(rows);
+        if (error) throw error;
       }
     }
 
