@@ -1493,12 +1493,14 @@ function renderPurchases() {
   });
 }
 
-/* ---- batch vs local: ask first, then show the matching input ---- */
+/* ---- batch vs local: ask first, then show the matching input ----
+   batch  = one statement line ("5 machines, 20 probes, 3 printers")
+   local  = the item picker (machine dropdown + tick-boxes, one line each) */
 function syncPurchaseMode() {
   const checked = $$("#purchase-mode input").find((x) => x.checked);
   const mode = checked ? checked.value : "";
-  $("#purchase-batch-area").hidden = mode !== "batch";
-  $("#purchase-local-field").hidden = mode !== "local";
+  $("#purchase-statement-field").hidden = mode !== "batch";
+  $("#purchase-picker-area").hidden = mode !== "local";
   $$("#purchase-mode .mode-opt").forEach((opt) =>
     opt.classList.toggle("is-on", opt.querySelector("input").checked)
   );
@@ -1511,11 +1513,11 @@ function openPurchaseForm(r = null) {
   $("#purchase-modal-title").textContent = r ? "Edit purchase" : "New purchase";
   $("#purchase-date").value = r?.entry_date || todayISO();
   /* a new purchase asks first (no mode selected); editing restores the stored one
-     (legacy rows have no mode and were all created with the picker → batch) */
+     (legacy rows have no mode → batch, which matches how they were written) */
   const mode = r ? (r.mode === "local" ? "local" : "batch") : "";
   $$("#purchase-mode input").forEach((x) => { x.checked = x.value === mode; });
-  renderItems(mode === "batch" ? r?.title : "", "purchase");
-  $("#purchase-local-item").value = mode === "local" ? String(r.title || "").replace(/\s*\n\s*/g, " ") : "";
+  renderItems(mode === "local" ? r?.title : "", "purchase");
+  $("#purchase-statement").value = mode === "batch" ? String(r.title || "").replace(/\s*\n\s*/g, " ") : "";
   $("#purchase-supplier").value = r?.supplier || "";
   $("#purchase-amount").value = r ? num(r.amount) : "";
   $("#purchase-notes").value = r?.notes || "";
@@ -1531,8 +1533,8 @@ async function savePurchase(e) {
   const modeEl = $$("#purchase-mode input").find((x) => x.checked);
   const mode = modeEl ? modeEl.value : "";
   const amountN = parseAmount($("#purchase-amount").value);
-  const items = mode === "local"
-    ? [$("#purchase-local-item").value.trim()].filter(Boolean)
+  const items = mode === "batch"
+    ? [$("#purchase-statement").value.trim()].filter(Boolean)
     : itemValues("purchase");
   const payload = {
     entry_date: $("#purchase-date").value || todayISO(),
@@ -1543,7 +1545,7 @@ async function savePurchase(e) {
     mode,
   };
   if (!mode) { errEl.textContent = "First choose whether this is a batch purchase or a local purchase."; errEl.hidden = false; return; }
-  if (!items.length) { errEl.textContent = mode === "local" ? "Please write what was bought as one line." : "Please enter what was bought — pick a machine, tick the boxes, or add a line."; errEl.hidden = false; return; }
+  if (!items.length) { errEl.textContent = mode === "batch" ? "Please write what was bought as one statement — how many machines, probes, etc." : "Please enter what was bought — pick a machine, tick the boxes, or add a line."; errEl.hidden = false; return; }
   if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
   if (payload.amount <= 0) { errEl.textContent = "Enter how much was paid for it."; errEl.hidden = false; return; }
 
@@ -1922,15 +1924,15 @@ function bindEvents() {
   /* purchases */
   $("#new-purchase-btn").addEventListener("click", () => openPurchaseForm());
   $("#purchase-form").addEventListener("submit", savePurchase);
-  /* batch ↔ local keeps whatever was already written: lines join into one,
-     and a single line becomes the first item row when switching back */
+  /* batch ↔ local keeps whatever was already written: picker lines join into
+     one statement, and a statement comes back as the first item row */
   $$("#purchase-mode input").forEach((radio) =>
     radio.addEventListener("change", () => {
       if (radio.value === "local") {
-        const items = itemValues("purchase");
-        if (items.length) $("#purchase-local-item").value = items.join(" · ");
+        renderItems($("#purchase-statement").value.trim(), "purchase");
       } else {
-        renderItems($("#purchase-local-item").value.trim(), "purchase");
+        const items = itemValues("purchase");
+        if (items.length) $("#purchase-statement").value = items.join(" · ");
       }
       syncPurchaseMode();
     })

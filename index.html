@@ -582,17 +582,22 @@
             <label class="mode-opt">
               <input type="radio" name="purchase-mode" value="batch" />
               <span class="mode-name">Batch purchase</span>
-              <small>A whole lot — machines, printers, probes</small>
+              <small>A whole lot — one statement</small>
             </label>
             <label class="mode-opt">
               <input type="radio" name="purchase-mode" value="local" />
               <span class="mode-name">Local purchase</span>
-              <small>Just one thing — a single long line</small>
+              <small>Pick each item — machines, probes</small>
             </label>
           </div>
           <small class="hint">Pick which kind this is first — the input below changes accordingly.</small>
 
-          <div id="purchase-batch-area" hidden>
+          <label class="field" id="purchase-statement-field" hidden><span>What was bought (one statement) *</span>
+            <input type="text" id="purchase-statement" placeholder="e.g. 5 machines, 20 probes, 3 printers" />
+            <small class="hint">One line — write how many machines, probes, printers etc. were bought.</small>
+          </label>
+
+          <div id="purchase-picker-area" hidden>
             <div class="picker">
               <select id="purchase-machine-picker" class="picker-machine">
                 <option value="">＋ Pick a machine type…</option>
@@ -634,11 +639,6 @@
             <button type="button" id="add-purchase-item-btn" class="btn btn-sm btn-ghost item-add">+ Add manually</button>
             <small class="hint">Same as a sale — pick a machine, tick what came with it, or type your own line. One line per item.</small>
           </div>
-
-          <label class="field" id="purchase-local-field" hidden><span>What was bought (one line) *</span>
-            <input type="text" id="purchase-local-item" placeholder="e.g. spare parts for the Logiq, packing &amp; transport" />
-            <small class="hint">Write everything bought as one single long line.</small>
-          </label>
         </div>
         <label class="field"><span>Supplier</span>
           <input type="text" id="purchase-supplier" placeholder="Optional — who you bought it from" />
