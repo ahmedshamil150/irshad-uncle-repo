@@ -212,6 +212,12 @@ const state = {
   purchaseRows: [],
   zakatSearch: "",
   zakatRows: [],
+  paySearch: "",
+  payRows: [],
+  recOpen: [],
+  recOverdue: new Set(),
+  /* ⚙ filter panels on the other list tabs (sales keeps state.f above) */
+  lf: {},
   payMax: 0,
   returnTo: null,
   returnSaleId: null,
@@ -481,8 +487,8 @@ function renderSales() {
         .join("")
     : `<div class="empty">${
         active
-          ? "No sales match these filters. Tap “Clear all filters” to start again."
-          : "No sales found. Tap “+ New sale” to add one."
+          ? "No sales match these filters."
+          : "No sales yet."
       }</div>`;
 
   $$("#sales-list .row").forEach((el) =>
@@ -515,6 +521,153 @@ function applyQuickRange(range) {
   $("#sf-to").value = f.to;
   $$("#sf-quick .seg").forEach((b) => b.classList.toggle("active", b.dataset.range === range));
   renderSales();
+}
+
+/* ---- ⚙ Filters for the other list tabs: purchases, loans, expenses,
+   zakat, receivables and payables all share this one engine ---- */
+const LIST_TABS = {
+  purchases: {
+    prefix: "pf", searchKey: "purchaseSearch", searchId: "purchase-search",
+    btn: "purchase-filter-btn", panel: "purchase-filters", badge: "purchase-filter-count",
+    hint: "purchase-filter-hint", clear: "purchase-filter-clear", info: "purchase-list-info",
+    date: (r) => r.entry_date, amount: (r) => num(r.amount),
+    extra: (r, v) => (r.mode || "batch") === v,      /* batch / local */
+    render: () => renderPurchases(),
+  },
+  loans: {
+    prefix: "lf", searchKey: "loanSearch", searchId: "loan-search",
+    btn: "loan-filter-btn", panel: "loan-filters", badge: "loan-filter-count",
+    hint: "loan-filter-hint", clear: "loan-filter-clear", info: "loan-list-info",
+    date: (r) => r.loan_date, amount: (r) => num(r.amount),
+    extra: (r, v) =>
+      v === "back" ? !!r.returned_at
+      : v === "late" ? !r.returned_at && !!r.due_date && r.due_date < todayISO()
+      : !r.returned_at,
+    render: () => renderLoans(),
+  },
+  expenses: {
+    prefix: "ef", searchKey: "expSearch", searchId: "expense-search",
+    btn: "expense-filter-btn", panel: "expense-filters", badge: "expense-filter-count",
+    hint: "expense-filter-hint", clear: "expense-filter-clear", info: "expense-list-info",
+    date: (r) => r.entry_date, amount: (r) => num(r.amount),
+    render: () => renderExpenses(),
+  },
+  zakat: {
+    prefix: "zf", searchKey: "zakatSearch", searchId: "zakat-search",
+    btn: "zakat-filter-btn", panel: "zakat-filters", badge: "zakat-filter-count",
+    hint: "zakat-filter-hint", clear: "zakat-filter-clear", info: "zakat-list-info",
+    date: (r) => r.entry_date, amount: (r) => num(r.amount),
+    render: () => renderZakat(),
+  },
+  receivables: {
+    prefix: "rf", searchKey: "recSearch", searchId: "receivable-search",
+    btn: "receivable-filter-btn", panel: "receivable-filters", badge: "receivable-filter-count",
+    hint: "receivable-filter-hint", clear: "receivable-filter-clear", info: "receivable-list-info",
+    date: (r) => r.sale_date, amount: (r) => num(r.bal),
+    extra: (r, v) => (v === "overdue" ? state.recOverdue.has(r.id) : !state.recOverdue.has(r.id)),
+    render: () => renderReceivables(),
+  },
+  payables: {
+    prefix: "pb", searchKey: "paySearch", searchId: "payable-search",
+    btn: "payable-filter-btn", panel: "payable-filters", badge: "payable-filter-count",
+    hint: "payable-filter-hint", clear: "payable-filter-clear", info: "payable-list-info",
+    date: (r) => r.entry_date, amount: (r) => num(r.amount),
+    extra: (r, v) =>
+      v === "paid" ? r.bal <= 0.009
+      : v === "part" ? r.bal > 0.009 && r.bal < num(r.amount) - 0.009
+      : r.bal > 0.009,
+    render: () => renderPayables(),
+  },
+};
+
+const listF = (tab) => (state.lf[tab] ||= { from: "", to: "", min: "", max: "", extra: "" });
+
+function listFilterCount(tab) {
+  const f = listF(tab);
+  return ["from", "to", "min", "max", "extra"].filter((k) => String(f[k] || "").trim() !== "").length;
+}
+const listFiltersActive = (tab) =>
+  String(state[LIST_TABS[tab].searchKey] || "").trim() !== "" || listFilterCount(tab) > 0;
+
+/* narrows `searched` to what the panel allows and keeps the badge, hint and
+   "showing" line in step — summary cards stay on the full totals */
+function applyListFilters(tab, searched, all) {
+  const cfg = LIST_TABS[tab], f = listF(tab);
+  const minRaw = parseAmount(f.min), maxRaw = parseAmount(f.max);
+  const min = !f.min.trim() || Number.isNaN(minRaw) ? null : minRaw;
+  const max = !f.max.trim() || Number.isNaN(maxRaw) ? null : maxRaw;
+  const backwards = !!(f.from && f.to && f.from > f.to);
+
+  const shown = backwards ? [] : searched.filter((r) => {
+    const d = cfg.date(r) || "";
+    if (f.from && d < f.from) return false;      /* ISO dates compare in order */
+    if (f.to && d > f.to) return false;
+    const a = cfg.amount(r);
+    if (min !== null && a < min) return false;
+    if (max !== null && a > max) return false;
+    if (f.extra && cfg.extra && !cfg.extra(r, f.extra)) return false;
+    return true;
+  });
+
+  const n = listFilterCount(tab);
+  const badge = $("#" + cfg.badge);
+  badge.hidden = n === 0;
+  badge.textContent = String(n);
+  $("#" + cfg.btn).classList.toggle("is-on", n > 0);
+
+  const hint = $("#" + cfg.hint);
+  hint.classList.toggle("warn", backwards);
+  hint.textContent = backwards
+    ? "⚠ The “From” date is after the “To” date — nothing can match."
+    : `${shown.length} of ${all.length} match`;
+
+  const info = $("#" + cfg.info);
+  const active = listFiltersActive(tab);
+  info.hidden = !active;
+  if (active) {
+    info.innerHTML =
+      `Showing <b>${shown.length}</b> of ${all.length} · ` +
+      `${money(shown.reduce((s, r) => s + cfg.amount(r), 0))} total`;
+  }
+  return shown;
+}
+
+/* one-tap date ranges — same choices as the sales panel */
+function listQuickRange(tab, range) {
+  const cfg = LIST_TABS[tab], p = cfg.prefix, f = listF(tab);
+  const t = todayISO();
+  if (range === "all") { f.from = ""; f.to = ""; }
+  else if (range === "today") { f.from = t; f.to = t; }
+  else if (range === "yesterday") {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    f.from = f.to = isoOf(d);
+  } else if (range === "week") {
+    const d = new Date();
+    d.setDate(d.getDate() - (d.getDay() + 6) % 7);   /* Monday of this week */
+    f.from = isoOf(d); f.to = t;
+  } else if (range === "month") { f.from = monthStartISO(); f.to = t; }
+  else if (range === "lastmonth") {
+    const d = new Date();
+    f.from = isoOf(new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    f.to = isoOf(new Date(d.getFullYear(), d.getMonth(), 0));   /* last day of previous month */
+  } else if (range === "custom") { $("#" + p + "-from").focus(); return; }
+
+  $("#" + p + "-from").value = f.from;
+  $("#" + p + "-to").value = f.to;
+  $$("#" + p + "-quick .seg").forEach((b) => b.classList.toggle("active", b.dataset.range === range));
+  cfg.render();
+}
+
+function clearListFilters(tab) {
+  const cfg = LIST_TABS[tab], p = cfg.prefix;
+  state.lf[tab] = { from: "", to: "", min: "", max: "", extra: "" };
+  state[cfg.searchKey] = "";
+  $("#" + cfg.searchId).value = "";
+  [p + "-from", p + "-to", p + "-min", p + "-max", p + "-extra"]
+    .forEach((id) => { const el = $("#" + id); if (el) el.value = ""; });
+  $$("#" + p + "-quick .seg").forEach((b) => b.classList.toggle("active", b.dataset.range === "all"));
+  cfg.render();
+  toast("Filters cleared");
 }
 
 /* ============ sale detail ============ */
@@ -991,25 +1144,35 @@ async function loadReceivables() {
     const pay = {};
     for (const p of pR.data || []) if (p.sale_id) pay[p.sale_id] = (pay[p.sale_id] || 0) + num(p.amount);
 
-    const overdueIds = new Set((iR.data || []).map((r) => r.sale_id));
-    const open = sR.data
+    state.recOverdue = new Set((iR.data || []).map((r) => r.sale_id));
+    state.recOpen = sR.data
       .map((r) => ({ ...r, bal: round2(num(r.total_amount) - num(r.cash_amount) - num(r.bank_amount) - num(r.adjustment_amount) - num(r.loan_amount) - (pay[r.id] || 0)) }))
       .filter((r) => r.bal > 0.009);
+    renderReceivables();
+  } finally {
+    busy(false);
+  }
+}
 
-    const total = open.reduce((s, r) => s + r.bal, 0);
-    const overdue = open.filter((r) => overdueIds.has(r.id)).reduce((s, r) => s + r.bal, 0);
+function renderReceivables() {
+  const open = state.recOpen || [];
+  const overdueIds = state.recOverdue || new Set();
 
-    $("#receivable-summary").innerHTML = `
+  const total = open.reduce((s, r) => s + r.bal, 0);
+  const overdue = open.filter((r) => overdueIds.has(r.id)).reduce((s, r) => s + r.bal, 0);
+
+  $("#receivable-summary").innerHTML = `
       <div class="stat tone-red"><div class="stat-label">Total to receive</div><div class="stat-value">${money(total)}</div></div>
       <div class="stat tone-amber"><div class="stat-label">Overdue sales</div><div class="stat-value">${open.filter((r) => overdueIds.has(r.id)).length}</div><div class="stat-sub">${money(overdue)} late</div></div>
       <div class="stat tone-brand"><div class="stat-label">Sales with balance</div><div class="stat-value">${open.length}</div></div>`;
 
-    const q = state.recSearch.toLowerCase();
-    const rows = open.filter((r) => !q || (r.customer_name || "").toLowerCase().includes(q));
+  const q = state.recSearch.toLowerCase();
+  const searched = open.filter((r) => !q || (r.customer_name || "").toLowerCase().includes(q));
+  const rows = applyListFilters("receivables", searched, open);
 
-    $("#receivable-list").innerHTML = rows.length
-      ? rows
-          .map((r) => `<div class="row" data-id="${r.id}">
+  $("#receivable-list").innerHTML = rows.length
+    ? rows
+        .map((r) => `<div class="row" data-id="${r.id}">
             <div class="row-main">
               <div class="row-title">${esc(r.customer_name)}
                 <span class="badge badge-${r.source}">${esc(srcName(r.source))}</span>
@@ -1025,20 +1188,21 @@ async function loadReceivables() {
               <button type="button" class="btn btn-sm btn-primary" data-act="pay">✓ Paid all</button>
             </div>
           </div>`)
-          .join("")
-      : `<div class="empty">Nothing to receive — every sale is fully paid.</div>`;
+        .join("")
+    : `<div class="empty">${
+        open.length === 0
+          ? "Nothing to receive — every sale is fully paid."
+          : listFiltersActive("receivables") ? "Nothing matches these filters." : "Nothing to receive."
+      }</div>`;
 
-    $$("#receivable-list .row").forEach((el) => {
-      const r = rows.find((x) => x.id === el.dataset.id);
-      el.addEventListener("click", (e) => {
-        if (e.target.closest('[data-act="pay"]'))
-          openPaymentModal("sale", r.id, `${r.customer_name} — still to receive ${money(r.bal)}`, r.bal);
-        else openSaleDetail(el.dataset.id);
-      });
+  $$("#receivable-list .row").forEach((el) => {
+    const r = rows.find((x) => x.id === el.dataset.id);
+    el.addEventListener("click", (e) => {
+      if (e.target.closest('[data-act="pay"]'))
+        openPaymentModal("sale", r.id, `${r.customer_name} — still to receive ${money(r.bal)}`, r.bal);
+      else openSaleDetail(el.dataset.id);
     });
-  } finally {
-    busy(false);
-  }
+  });
 }
 
 /* ============ payables ============ */
@@ -1054,11 +1218,24 @@ async function loadPayables() {
     const pay = {};
     for (const p of pR.data || []) if (p.payable_id) pay[p.payable_id] = (pay[p.payable_id] || 0) + num(p.amount);
 
-    const rows = (bR.data || []).map((r) => ({ ...r, bal: round2(num(r.amount) - (pay[r.id] || 0)) }));
+    state.payRows = (bR.data || []).map((r) => ({ ...r, bal: round2(num(r.amount) - (pay[r.id] || 0)) }));
+    renderPayables();
+  } finally {
+    busy(false);
+  }
+}
 
-    $("#payable-list").innerHTML = rows.length
-      ? rows
-          .map((r) => `<div class="row" data-id="${r.id}">
+function renderPayables() {
+  const all = state.payRows || [];
+  const q = state.paySearch.toLowerCase();
+  const searched = all.filter(
+    (r) => !q || (r.party || "").toLowerCase().includes(q) || (r.notes || "").toLowerCase().includes(q)
+  );
+  const rows = applyListFilters("payables", searched, all);
+
+  $("#payable-list").innerHTML = rows.length
+    ? rows
+        .map((r) => `<div class="row" data-id="${r.id}">
             <div class="row-main">
               <div class="row-title">${esc(r.party)}</div>
               <div class="row-sub">${fmtDate(r.entry_date)}${r.notes ? " · " + esc(r.notes) : ""}</div>
@@ -1073,10 +1250,14 @@ async function loadPayables() {
               <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
             </div>
           </div>`)
-          .join("")
-      : `<div class="empty">Nothing to pay yet. Add what you owe a dealer or supplier.</div>`;
+        .join("")
+    : `<div class="empty">${
+        all.length === 0 || !listFiltersActive("payables")
+          ? "Nothing to pay yet."
+          : "Nothing matches these filters."
+      }</div>`;
 
-    $$("#payable-list .row").forEach((el) => {
+  $$("#payable-list .row").forEach((el) => {
       const r = rows.find((x) => x.id === el.dataset.id);
       el.addEventListener("click", (e) => {
         const act = e.target.closest("[data-act]")?.dataset.act;
@@ -1095,9 +1276,6 @@ async function loadPayables() {
         else openPayableForm(r);
       });
     });
-  } finally {
-    busy(false);
-  }
 }
 
 function openPayableForm(r = null) {
@@ -1183,7 +1361,8 @@ function renderLoans() {
       <div class="stat tone-brand"><div class="stat-label">Given out (all)</div><div class="stat-value">${money(allTotal)}</div><div class="stat-sub">${back.length} returned</div></div>`;
 
     const q = state.loanSearch.toLowerCase();
-    const shown = rows.filter((r) => !q || (r.person || "").toLowerCase().includes(q));
+    const searched = rows.filter((r) => !q || (r.person || "").toLowerCase().includes(q));
+    const shown = applyListFilters("loans", searched, rows);
 
     $("#loan-list").innerHTML = shown.length
       ? shown
@@ -1211,7 +1390,7 @@ function renderLoans() {
           </div>`;
           })
           .join("")
-      : `<div class="empty">${q ? "No matching name." : "No loans recorded yet. Tap “+ New loan” when you give money to someone."}</div>`;
+      : `<div class="empty">${listFiltersActive("loans") ? "No loans match these filters." : "No loans yet."}</div>`;
 
     $$("#loan-list .row").forEach((el) => {
       const r = rows.find((x) => x.id === el.dataset.id);
@@ -1327,12 +1506,13 @@ function renderExpenses() {
     <div class="stat tone-red"><div class="stat-label">All time</div><div class="stat-value">${money(sum(rows))}</div><div class="stat-sub">${rows.length} recorded</div></div>`;
 
   const q = state.expSearch.toLowerCase();
-  const shown = rows.filter(
+  const searched = rows.filter(
     (r) =>
       !q ||
       (r.title || "").toLowerCase().includes(q) ||
       (r.notes || "").toLowerCase().includes(q)
   );
+  const shown = applyListFilters("expenses", searched, rows);
 
   $("#expense-list").innerHTML = shown.length
     ? shown
@@ -1354,9 +1534,7 @@ function renderExpenses() {
         )
         .join("")
     : `<div class="empty">${
-        q
-          ? "No matching expense."
-          : "No expenses recorded yet. Tap “+ New expense” when money is spent."
+        listFiltersActive("expenses") ? "No expenses match these filters." : "No expenses yet."
       }</div>`;
 
   $$("#expense-list .row").forEach((el) => {
@@ -1458,13 +1636,14 @@ function renderPurchases() {
     <div class="stat tone-red"><div class="stat-label">All time</div><div class="stat-value">${money(sum(rows))}</div><div class="stat-sub">${rows.length} recorded</div></div>`;
 
   const q = state.purchaseSearch.toLowerCase();
-  const shown = rows.filter(
+  const searched = rows.filter(
     (r) =>
       !q ||
       (r.title || "").toLowerCase().includes(q) ||
       (r.supplier || "").toLowerCase().includes(q) ||
       (r.notes || "").toLowerCase().includes(q)
   );
+  const shown = applyListFilters("purchases", searched, rows);
 
   $("#purchase-list").innerHTML = shown.length
     ? shown
@@ -1486,9 +1665,7 @@ function renderPurchases() {
         )
         .join("")
     : `<div class="empty">${
-        q
-          ? "No matching purchase."
-          : "No purchases recorded yet. Tap “+ New purchase” when something is bought."
+        listFiltersActive("purchases") ? "No purchases match these filters." : "No purchases yet."
       }</div>`;
 
   $$("#purchase-list .row").forEach((el) => {
@@ -1615,7 +1792,8 @@ function renderZakat() {
     <div class="stat tone-violet"><div class="stat-label">All time</div><div class="stat-value">${money(sum(rows))}</div><div class="stat-sub">${rows.length} recorded</div></div>`;
 
   const q = state.zakatSearch.toLowerCase();
-  const shown = rows.filter((r) => !q || (r.notes || "").toLowerCase().includes(q));
+  const searched = rows.filter((r) => !q || (r.notes || "").toLowerCase().includes(q));
+  const shown = applyListFilters("zakat", searched, rows);
 
   $("#zakat-list").innerHTML = shown.length
     ? shown
@@ -1637,9 +1815,7 @@ function renderZakat() {
         )
         .join("")
     : `<div class="empty">${
-        q
-          ? "No matching zakat entry."
-          : "No zakat recorded yet. Tap “+ New zakat” when zakat is given."
+        listFiltersActive("zakat") ? "No zakat entries match these filters." : "No zakat entries yet."
       }</div>`;
 
   $$("#zakat-list .row").forEach((el) => {
@@ -1968,10 +2144,47 @@ function bindEvents() {
   $("#payable-form").addEventListener("submit", savePayable);
   $("#payment-form").addEventListener("submit", savePayment);
 
-  /* receivables search */
+  /* receivables search (list is already in memory — no refetch per keystroke) */
   $("#receivable-search").addEventListener("input", (e) => {
     state.recSearch = e.target.value;
-    loadReceivables().catch((x) => toast(x.message, true));
+    renderReceivables();
+  });
+
+  /* payables search */
+  $("#payable-search").addEventListener("input", (e) => {
+    state.paySearch = e.target.value;
+    renderPayables();
+  });
+
+  /* ⚙ Filters panels on the other tabs — sales wires its own above */
+  Object.keys(LIST_TABS).forEach((tab) => {
+    const cfg = LIST_TABS[tab], p = cfg.prefix;
+    $("#" + cfg.btn).addEventListener("click", () => {
+      const panel = $("#" + cfg.panel);
+      panel.hidden = !panel.hidden;
+      $("#" + cfg.btn).setAttribute("aria-expanded", String(!panel.hidden));
+    });
+    const bind = (key, ev) =>
+      $("#" + p + "-" + key).addEventListener(ev, (e) => {
+        listF(tab)[key] = e.target.value;
+        if (key === "from" || key === "to")
+          $$("#" + p + "-quick .seg").forEach((b) => b.classList.toggle("active", b.dataset.range === "custom"));
+        cfg.render();
+      });
+    /* dates react to both: picking fires "change", typing fires "input" */
+    ["from", "to"].forEach((key) => ["change", "input"].forEach((ev) => bind(key, ev)));
+    bind("min", "input");
+    bind("max", "input");
+    if (cfg.extra)
+      $("#" + p + "-extra").addEventListener("change", (e) => {
+        listF(tab).extra = e.target.value;
+        cfg.render();
+      });
+    $("#" + p + "-quick").addEventListener("click", (e) => {
+      const b = e.target.closest(".seg");
+      if (b) listQuickRange(tab, b.dataset.range);
+    });
+    $("#" + cfg.clear).addEventListener("click", () => clearListFilters(tab));
   });
 
   /* modal close */

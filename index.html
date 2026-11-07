@@ -170,8 +170,44 @@
         <div id="purchase-summary" class="cards cards-tight"></div>
         <div class="toolbar">
           <input type="search" id="purchase-search" class="input" placeholder="Search what was bought…" />
+          <button type="button" id="purchase-filter-btn" class="btn btn-ghost" aria-expanded="false" aria-controls="purchase-filters">
+            ⚙ Filters <span id="purchase-filter-count" class="chip-count" hidden>0</span>
+          </button>
           <button type="button" id="new-purchase-btn" class="btn btn-primary">+ New purchase</button>
         </div>
+        <div id="purchase-filters" class="filters" hidden>
+          <div class="filter-grid">
+            <label class="field"><span>Kind</span>
+              <select id="pf-extra">
+                <option value="">All — batch &amp; local</option>
+                <option value="batch">Batch only</option>
+                <option value="local">Local only</option>
+              </select>
+            </label>
+            <label class="field"><span>From date</span><input type="date" id="pf-from" /></label>
+            <label class="field"><span>To date</span><input type="date" id="pf-to" /></label>
+            <label class="field"><span>Amount from (Rs)</span>
+              <input type="text" id="pf-min" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 1lac" />
+            </label>
+            <label class="field"><span>Amount up to (Rs)</span>
+              <input type="text" id="pf-max" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 20lac" />
+            </label>
+          </div>
+          <div class="segmented filter-quick" id="pf-quick">
+            <button type="button" class="seg active" data-range="all">All time</button>
+            <button type="button" class="seg" data-range="today">Today</button>
+            <button type="button" class="seg" data-range="yesterday">Yesterday</button>
+            <button type="button" class="seg" data-range="week">This week</button>
+            <button type="button" class="seg" data-range="month">This month</button>
+            <button type="button" class="seg" data-range="lastmonth">Last month</button>
+            <button type="button" class="seg" data-range="custom">Custom dates</button>
+          </div>
+          <div class="filter-foot">
+            <span id="purchase-filter-hint" class="filter-hint"></span>
+            <button type="button" id="purchase-filter-clear" class="btn btn-sm btn-ghost">Clear all filters</button>
+          </div>
+        </div>
+        <div id="purchase-list-info" class="list-info" hidden></div>
         <div id="purchase-list" class="list"></div>
       </section>
 
@@ -180,8 +216,45 @@
         <div id="loan-summary" class="cards cards-tight"></div>
         <div class="toolbar">
           <input type="search" id="loan-search" class="input" placeholder="Search name…" />
+          <button type="button" id="loan-filter-btn" class="btn btn-ghost" aria-expanded="false" aria-controls="loan-filters">
+            ⚙ Filters <span id="loan-filter-count" class="chip-count" hidden>0</span>
+          </button>
           <button type="button" id="new-loan-btn" class="btn btn-primary">+ New loan</button>
         </div>
+        <div id="loan-filters" class="filters" hidden>
+          <div class="filter-grid">
+            <label class="field"><span>Status</span>
+              <select id="lf-extra">
+                <option value="">All loans</option>
+                <option value="out">Still out</option>
+                <option value="late">Past the due date</option>
+                <option value="back">Returned</option>
+              </select>
+            </label>
+            <label class="field"><span>Given from</span><input type="date" id="lf-from" /></label>
+            <label class="field"><span>Given to</span><input type="date" id="lf-to" /></label>
+            <label class="field"><span>Amount from (Rs)</span>
+              <input type="text" id="lf-min" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 1lac" />
+            </label>
+            <label class="field"><span>Amount up to (Rs)</span>
+              <input type="text" id="lf-max" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 20lac" />
+            </label>
+          </div>
+          <div class="segmented filter-quick" id="lf-quick">
+            <button type="button" class="seg active" data-range="all">All time</button>
+            <button type="button" class="seg" data-range="today">Today</button>
+            <button type="button" class="seg" data-range="yesterday">Yesterday</button>
+            <button type="button" class="seg" data-range="week">This week</button>
+            <button type="button" class="seg" data-range="month">This month</button>
+            <button type="button" class="seg" data-range="lastmonth">Last month</button>
+            <button type="button" class="seg" data-range="custom">Custom dates</button>
+          </div>
+          <div class="filter-foot">
+            <span id="loan-filter-hint" class="filter-hint"></span>
+            <button type="button" id="loan-filter-clear" class="btn btn-sm btn-ghost">Clear all filters</button>
+          </div>
+        </div>
+        <div id="loan-list-info" class="list-info" hidden></div>
         <div id="loan-list" class="list"></div>
       </section>
 
@@ -190,8 +263,37 @@
         <div id="expense-summary" class="cards cards-tight"></div>
         <div class="toolbar">
           <input type="search" id="expense-search" class="input" placeholder="Search what it was for…" />
+          <button type="button" id="expense-filter-btn" class="btn btn-ghost" aria-expanded="false" aria-controls="expense-filters">
+            ⚙ Filters <span id="expense-filter-count" class="chip-count" hidden>0</span>
+          </button>
           <button type="button" id="new-expense-btn" class="btn btn-primary">+ New expense</button>
         </div>
+        <div id="expense-filters" class="filters" hidden>
+          <div class="filter-grid">
+            <label class="field"><span>From date</span><input type="date" id="ef-from" /></label>
+            <label class="field"><span>To date</span><input type="date" id="ef-to" /></label>
+            <label class="field"><span>Amount from (Rs)</span>
+              <input type="text" id="ef-min" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 1lac" />
+            </label>
+            <label class="field"><span>Amount up to (Rs)</span>
+              <input type="text" id="ef-max" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 20lac" />
+            </label>
+          </div>
+          <div class="segmented filter-quick" id="ef-quick">
+            <button type="button" class="seg active" data-range="all">All time</button>
+            <button type="button" class="seg" data-range="today">Today</button>
+            <button type="button" class="seg" data-range="yesterday">Yesterday</button>
+            <button type="button" class="seg" data-range="week">This week</button>
+            <button type="button" class="seg" data-range="month">This month</button>
+            <button type="button" class="seg" data-range="lastmonth">Last month</button>
+            <button type="button" class="seg" data-range="custom">Custom dates</button>
+          </div>
+          <div class="filter-foot">
+            <span id="expense-filter-hint" class="filter-hint"></span>
+            <button type="button" id="expense-filter-clear" class="btn btn-sm btn-ghost">Clear all filters</button>
+          </div>
+        </div>
+        <div id="expense-list-info" class="list-info" hidden></div>
         <div id="expense-list" class="list"></div>
       </section>
 
@@ -200,8 +302,37 @@
         <div id="zakat-summary" class="cards cards-tight"></div>
         <div class="toolbar">
           <input type="search" id="zakat-search" class="input" placeholder="Search zakat entries…" />
+          <button type="button" id="zakat-filter-btn" class="btn btn-ghost" aria-expanded="false" aria-controls="zakat-filters">
+            ⚙ Filters <span id="zakat-filter-count" class="chip-count" hidden>0</span>
+          </button>
           <button type="button" id="new-zakat-btn" class="btn btn-primary">+ New zakat</button>
         </div>
+        <div id="zakat-filters" class="filters" hidden>
+          <div class="filter-grid">
+            <label class="field"><span>From date</span><input type="date" id="zf-from" /></label>
+            <label class="field"><span>To date</span><input type="date" id="zf-to" /></label>
+            <label class="field"><span>Amount from (Rs)</span>
+              <input type="text" id="zf-min" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 50hazar" />
+            </label>
+            <label class="field"><span>Amount up to (Rs)</span>
+              <input type="text" id="zf-max" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 2lac" />
+            </label>
+          </div>
+          <div class="segmented filter-quick" id="zf-quick">
+            <button type="button" class="seg active" data-range="all">All time</button>
+            <button type="button" class="seg" data-range="today">Today</button>
+            <button type="button" class="seg" data-range="yesterday">Yesterday</button>
+            <button type="button" class="seg" data-range="week">This week</button>
+            <button type="button" class="seg" data-range="month">This month</button>
+            <button type="button" class="seg" data-range="lastmonth">Last month</button>
+            <button type="button" class="seg" data-range="custom">Custom dates</button>
+          </div>
+          <div class="filter-foot">
+            <span id="zakat-filter-hint" class="filter-hint"></span>
+            <button type="button" id="zakat-filter-clear" class="btn btn-sm btn-ghost">Clear all filters</button>
+          </div>
+        </div>
+        <div id="zakat-list-info" class="list-info" hidden></div>
         <div id="zakat-list" class="list"></div>
       </section>
 
@@ -210,16 +341,89 @@
         <div id="receivable-summary" class="cards cards-tight"></div>
         <div class="toolbar">
           <input type="search" id="receivable-search" class="input" placeholder="Search customer…" />
+          <button type="button" id="receivable-filter-btn" class="btn btn-ghost" aria-expanded="false" aria-controls="receivable-filters">
+            ⚙ Filters <span id="receivable-filter-count" class="chip-count" hidden>0</span>
+          </button>
         </div>
+        <div id="receivable-filters" class="filters" hidden>
+          <div class="filter-grid">
+            <label class="field"><span>Payment status</span>
+              <select id="rf-extra">
+                <option value="">Any status</option>
+                <option value="overdue">Overdue only</option>
+                <option value="due">Not yet overdue</option>
+              </select>
+            </label>
+            <label class="field"><span>Sold from</span><input type="date" id="rf-from" /></label>
+            <label class="field"><span>Sold to</span><input type="date" id="rf-to" /></label>
+            <label class="field"><span>Still to receive from (Rs)</span>
+              <input type="text" id="rf-min" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 1lac" />
+            </label>
+            <label class="field"><span>Still to receive up to (Rs)</span>
+              <input type="text" id="rf-max" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 20lac" />
+            </label>
+          </div>
+          <div class="segmented filter-quick" id="rf-quick">
+            <button type="button" class="seg active" data-range="all">All time</button>
+            <button type="button" class="seg" data-range="today">Today</button>
+            <button type="button" class="seg" data-range="yesterday">Yesterday</button>
+            <button type="button" class="seg" data-range="week">This week</button>
+            <button type="button" class="seg" data-range="month">This month</button>
+            <button type="button" class="seg" data-range="lastmonth">Last month</button>
+            <button type="button" class="seg" data-range="custom">Custom dates</button>
+          </div>
+          <div class="filter-foot">
+            <span id="receivable-filter-hint" class="filter-hint"></span>
+            <button type="button" id="receivable-filter-clear" class="btn btn-sm btn-ghost">Clear all filters</button>
+          </div>
+        </div>
+        <div id="receivable-list-info" class="list-info" hidden></div>
         <div id="receivable-list" class="list"></div>
       </section>
 
       <!-- ============ PAYABLES ============ -->
       <section id="view-payables" class="view" hidden>
         <div class="toolbar">
-          <div class="spacer"></div>
+          <input type="search" id="payable-search" class="input" placeholder="Search who you owe…" />
+          <button type="button" id="payable-filter-btn" class="btn btn-ghost" aria-expanded="false" aria-controls="payable-filters">
+            ⚙ Filters <span id="payable-filter-count" class="chip-count" hidden>0</span>
+          </button>
           <button type="button" id="new-payable-btn" class="btn btn-primary">+ Add what you owe</button>
         </div>
+        <div id="payable-filters" class="filters" hidden>
+          <div class="filter-grid">
+            <label class="field"><span>Payment status</span>
+              <select id="pb-extra">
+                <option value="">Any status</option>
+                <option value="due">Still to pay</option>
+                <option value="part">Partly paid</option>
+                <option value="paid">Fully paid</option>
+              </select>
+            </label>
+            <label class="field"><span>From date</span><input type="date" id="pb-from" /></label>
+            <label class="field"><span>To date</span><input type="date" id="pb-to" /></label>
+            <label class="field"><span>Amount from (Rs)</span>
+              <input type="text" id="pb-min" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 1lac" />
+            </label>
+            <label class="field"><span>Amount up to (Rs)</span>
+              <input type="text" id="pb-max" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 20lac" />
+            </label>
+          </div>
+          <div class="segmented filter-quick" id="pb-quick">
+            <button type="button" class="seg active" data-range="all">All time</button>
+            <button type="button" class="seg" data-range="today">Today</button>
+            <button type="button" class="seg" data-range="yesterday">Yesterday</button>
+            <button type="button" class="seg" data-range="week">This week</button>
+            <button type="button" class="seg" data-range="month">This month</button>
+            <button type="button" class="seg" data-range="lastmonth">Last month</button>
+            <button type="button" class="seg" data-range="custom">Custom dates</button>
+          </div>
+          <div class="filter-foot">
+            <span id="payable-filter-hint" class="filter-hint"></span>
+            <button type="button" id="payable-filter-clear" class="btn btn-sm btn-ghost">Clear all filters</button>
+          </div>
+        </div>
+        <div id="payable-list-info" class="list-info" hidden></div>
         <div id="payable-list" class="list"></div>
       </section>
 
