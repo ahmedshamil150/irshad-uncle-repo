@@ -46,21 +46,6 @@ create table if not exists public.payables (
   notes       text
 );
 
-create table if not exists public.payments (
-  id          uuid primary key default gen_random_uuid(),
-  created_at  timestamptz not null default now(),
-  paid_at     date not null default current_date,
-  sale_id     uuid references public.sales(id) on delete cascade,
-  payable_id  uuid references public.payables(id) on delete cascade,
-  amount      numeric(14,2) not null check (amount > 0),
-  method      text not null default 'cash' check (method in ('cash','bank')),
-  notes       text,
-  constraint one_target check (
-    (case when sale_id is not null then 1 else 0 end
-   + case when payable_id is not null then 1 else 0 end) = 1
-  )
-);
-
 create table if not exists public.salesmen (
   id         uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
@@ -85,6 +70,7 @@ create table if not exists public.expenses (
   created_at timestamptz not null default now(),
   entry_date date not null default current_date,
   title      text not null,
+  payee      text,
   amount     numeric(14,2) not null check (amount > 0),
   notes      text
 );
@@ -97,6 +83,8 @@ create table if not exists public.purchases (
   title      text not null,
   supplier   text,
   amount     numeric(14,2) not null check (amount > 0),
+  cash_amount numeric(14,2) not null default 0 check (cash_amount >= 0),
+  bank_amount numeric(14,2) not null default 0 check (bank_amount >= 0),
   notes      text,
   mode       text not null default 'batch' check (mode in ('batch','local'))
 );
@@ -110,10 +98,62 @@ create table if not exists public.zakat (
   notes      text
 );
 
+-- Payments: money in (from sales, loan returns) or out (to suppliers, on what we owe).
+create table if not exists public.payments (
+  id          uuid primary key default gen_random_uuid(),
+  created_at  timestamptz not null default now(),
+  paid_at     date not null default current_date,
+  sale_id     uuid references public.sales(id) on delete cascade,
+  payable_id  uuid references public.payables(id) on delete cascade,
+  purchase_id uuid references public.purchases(id) on delete cascade,
+  loan_id     uuid references public.personal_loans(id) on delete cascade,
+  amount      numeric(14,2) not null check (amount > 0),
+  method      text not null default 'cash' check (method in ('cash','bank')),
+  notes       text,
+  constraint one_target check (
+    (case when sale_id is not null then 1 else 0 end
+   + case when payable_id is not null then 1 else 0 end
+   + case when purchase_id is not null then 1 else 0 end
+   + case when loan_id is not null then 1 else 0 end) = 1
+  )
+);
+
+-- Installment schedule for what we still owe a supplier on a purchase.
+create table if not exists public.purchase_installments (
+  id             uuid primary key default gen_random_uuid(),
+  purchase_id    uuid not null references public.purchases(id) on delete cascade,
+  installment_no int not null,
+  due_date       date not null,
+  amount         numeric(14,2) not null check (amount > 0),
+  unique (purchase_id, installment_no)
+);
+
+-- Installment schedule for a personal loan coming back to us in parts.
+create table if not exists public.loan_installments (
+  id             uuid primary key default gen_random_uuid(),
+  loan_id        uuid not null references public.personal_loans(id) on delete cascade,
+  installment_no int not null,
+  due_date       date not null,
+  amount         numeric(14,2) not null check (amount > 0),
+  unique (loan_id, installment_no)
+);
+
 -- Newer columns on existing installs (no-ops on a fresh database).
 alter table public.sales add column if not exists reference_type text check (reference_type in ('office','salesman'));
 alter table public.sales add column if not exists reference_name text;
 alter table public.sales add column if not exists dealer_name text;
+alter table public.expenses add column if not exists payee text;
+alter table public.purchases add column if not exists cash_amount numeric(14,2) not null default 0 check (cash_amount >= 0);
+alter table public.purchases add column if not exists bank_amount numeric(14,2) not null default 0 check (bank_amount >= 0);
+alter table public.payments add column if not exists purchase_id uuid references public.purchases(id) on delete cascade;
+alter table public.payments add column if not exists loan_id uuid references public.personal_loans(id) on delete cascade;
+alter table public.payments drop constraint if exists one_target;
+alter table public.payments add constraint one_target check (
+  (case when sale_id is not null then 1 else 0 end
+ + case when payable_id is not null then 1 else 0 end
+ + case when purchase_id is not null then 1 else 0 end
+ + case when loan_id is not null then 1 else 0 end) = 1
+);
 
 -- ============ INDEXES ============
 create index if not exists idx_sales_date     on public.sales (sale_date desc);
@@ -122,6 +162,10 @@ create unique index if not exists idx_salesmen_name  on public.salesmen (lower(n
 create index if not exists idx_inst_sale      on public.installments (sale_id);
 create index if not exists idx_pay_sale       on public.payments (sale_id);
 create index if not exists idx_pay_payable    on public.payments (payable_id);
+create index if not exists idx_pay_purchase   on public.payments (purchase_id);
+create index if not exists idx_pay_loan       on public.payments (loan_id);
+create index if not exists idx_pinst_purchase on public.purchase_installments (purchase_id);
+create index if not exists idx_linst_loan     on public.loan_installments (loan_id);
 create index if not exists idx_pay_date       on public.payments (paid_at);
 create index if not exists idx_payables_date  on public.payables (entry_date desc);
 create index if not exists idx_loans_date     on public.personal_loans (loan_date desc);
@@ -148,6 +192,8 @@ create trigger trg_sales_updated_at
 
 alter table public.sales           enable row level security;
 alter table public.installments    enable row level security;
+alter table public.purchase_installments enable row level security;
+alter table public.loan_installments     enable row level security;
 alter table public.payables        enable row level security;
 alter table public.payments        enable row level security;
 alter table public.salesmen        enable row level security;
@@ -158,6 +204,8 @@ alter table public.zakat          enable row level security;
 
 drop policy if exists "auth all" on public.sales;
 drop policy if exists "auth all" on public.installments;
+drop policy if exists "auth all" on public.purchase_installments;
+drop policy if exists "auth all" on public.loan_installments;
 drop policy if exists "auth all" on public.payables;
 drop policy if exists "auth all" on public.payments;
 drop policy if exists "auth all" on public.salesmen;
@@ -168,6 +216,8 @@ drop policy if exists "auth all" on public.zakat;
 
 create policy "auth all" on public.sales          for all to authenticated using (true) with check (true);
 create policy "auth all" on public.installments   for all to authenticated using (true) with check (true);
+create policy "auth all" on public.purchase_installments for all to authenticated using (true) with check (true);
+create policy "auth all" on public.loan_installments     for all to authenticated using (true) with check (true);
 create policy "auth all" on public.payables       for all to authenticated using (true) with check (true);
 create policy "auth all" on public.payments       for all to authenticated using (true) with check (true);
 create policy "auth all" on public.salesmen       for all to authenticated using (true) with check (true);

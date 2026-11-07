@@ -714,6 +714,29 @@
         <label class="field"><span>Amount (Rs) *</span>
           <input type="text" id="loan-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 5lac" />
         </label>
+
+        <details class="disclose" id="loan-inst-disclose">
+          <summary>Returns in installments (optional)</summary>
+          <div class="disclose-body">
+            <label class="check">
+              <input type="checkbox" id="loan-installment" />
+              <span>He will return the money in monthly installments</span>
+            </label>
+
+            <div id="loan-inst-fields" class="installment-fields" hidden>
+              <div class="grid-2">
+                <label class="field"><span>How many months</span>
+                  <input type="number" id="loan-inst-count" inputmode="numeric" min="1" max="120" step="1" value="12" />
+                </label>
+                <label class="field"><span>First due date</span>
+                  <input type="date" id="loan-inst-first" />
+                </label>
+              </div>
+              <div id="loan-inst-preview" class="inst-preview"></div>
+            </div>
+          </div>
+        </details>
+
         <label class="field"><span>Notes</span>
           <input type="text" id="loan-notes" placeholder="Optional" />
         </label>
@@ -737,6 +760,10 @@
         <input type="hidden" id="expense-id" />
         <label class="field"><span>Date *</span>
           <input type="date" id="expense-date" required />
+        </label>
+        <label class="field"><span>Paid to *</span>
+          <input type="text" id="expense-payee" required list="expense-payees" placeholder="Who was the money given to?" />
+          <datalist id="expense-payees"></datalist>
         </label>
         <label class="field"><span>What was it for? *</span>
           <input type="text" id="expense-title" list="expense-kinds" required placeholder="e.g. Shop rent" />
@@ -846,6 +873,45 @@
         <label class="field"><span>Amount (Rs) *</span>
           <input type="text" id="purchase-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 12lac" />
         </label>
+
+        <div class="paid-summary" id="purchase-paid-summary"></div>
+
+        <details class="disclose" id="purchase-pay-disclose">
+          <summary>How was it paid? (optional)</summary>
+          <div class="disclose-body">
+            <div class="grid-2">
+              <label class="field"><span>Cash (Rs)</span>
+                <input type="text" id="purchase-cash" class="amt" inputmode="decimal" autocomplete="off" placeholder="0" />
+              </label>
+              <label class="field"><span>Bank (Rs)</span>
+                <input type="text" id="purchase-bank" class="amt" inputmode="decimal" autocomplete="off" placeholder="0" />
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <details class="disclose" id="purchase-inst-disclose">
+          <summary>Installments (optional)</summary>
+          <div class="disclose-body">
+            <label class="check">
+              <input type="checkbox" id="purchase-installment" />
+              <span>Split what is left unpaid into monthly installments</span>
+            </label>
+
+            <div id="purchase-inst-fields" class="installment-fields" hidden>
+              <div class="grid-2">
+                <label class="field"><span>How many months</span>
+                  <input type="number" id="purchase-inst-count" inputmode="numeric" min="1" max="120" step="1" value="12" />
+                </label>
+                <label class="field"><span>First due date</span>
+                  <input type="date" id="purchase-inst-first" />
+                </label>
+              </div>
+              <div id="purchase-inst-preview" class="inst-preview"></div>
+            </div>
+          </div>
+        </details>
+
         <label class="field"><span>Notes</span>
           <input type="text" id="purchase-notes" placeholder="Optional" />
         </label>
@@ -893,6 +959,17 @@
         <button type="button" class="modal-x" data-close>✕</button>
       </div>
       <div class="modal-body" id="sale-detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Loan detail -->
+  <div id="modal-loan-detail" class="modal" hidden>
+    <div class="modal-dialog modal-lg" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>Loan detail</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <div class="modal-body" id="loan-detail-body"></div>
     </div>
   </div>
 

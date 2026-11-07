@@ -124,12 +124,15 @@ window.addEventListener("popstate", () => {
                       this path restores body scrolling too */
 });
 
-/* closing payment modal returns you to the sale detail it was opened from */
+/* closing payment modal returns you to the sale/loan detail it was opened from */
 function dismissModals() {
   const open = $$(".modal").find((m) => !m.hidden);
   closeModals();
   if (open?.id === "modal-payment" && state.returnTo === "modal-sale-detail" && state.returnSaleId) {
     openSaleDetail(state.returnSaleId).catch(() => {});
+  }
+  if (open?.id === "modal-payment" && state.returnTo === "modal-loan-detail" && state.returnLoanId) {
+    openLoanDetail(state.returnLoanId).catch(() => {});
   }
 }
 
@@ -221,6 +224,7 @@ const state = {
   payMax: 0,
   returnTo: null,
   returnSaleId: null,
+  returnLoanId: null,
 };
 
 const loaders = {
@@ -258,15 +262,17 @@ function applyRange(q, col) {
 async function loadDashboard() {
   busy(true);
   try {
-    const [salesR, lightR, paysR, payablesR, zakatR, purchR] = await Promise.all([
+    const [salesR, lightR, paysR, payablesR, zakatR, purchR, purchOwedR] = await Promise.all([
       applyRange(sb.from("sales").select("*"), "sale_date"),
       sb.from("sales").select("id,total_amount,cash_amount,bank_amount,adjustment_amount,loan_amount"),
-      sb.from("payments").select("sale_id,payable_id,amount"),
+      sb.from("payments").select("sale_id,payable_id,purchase_id,amount"),
       sb.from("payables").select("amount"),
       applyRange(sb.from("zakat").select("amount"), "entry_date"),
       applyRange(sb.from("purchases").select("amount"), "entry_date"),
+      /* unpaid purchase balances — same money the To pay tab lists (all-time, like payables) */
+      sb.from("purchases").select("id,amount,cash_amount,bank_amount"),
     ]);
-    const errs = [salesR, lightR, paysR, payablesR, zakatR, purchR].find((r) => r.error);
+    const errs = [salesR, lightR, paysR, payablesR, zakatR, purchR, purchOwedR].find((r) => r.error);
     if (errs) throw errs.error;
 
     const sales = salesR.data || [];
@@ -275,6 +281,7 @@ async function loadDashboard() {
     const payables = payablesR.data || [];
     const zakatRows = zakatR.data || [];
     const purchRows = purchR.data || [];
+    const purchOwed = purchOwedR.data || [];
 
     const totalSale = sales.reduce((s, r) => s + num(r.total_amount), 0);
     const cash = sales.reduce((s, r) => s + num(r.cash_amount), 0);
@@ -284,9 +291,11 @@ async function loadDashboard() {
 
     const paidForSale = {};
     const paidForPayable = {};
+    const paidForPurchase = {};
     for (const p of pays) {
       if (p.sale_id) paidForSale[p.sale_id] = (paidForSale[p.sale_id] || 0) + num(p.amount);
       if (p.payable_id) paidForPayable[p.payable_id] = (paidForPayable[p.payable_id] || 0) + num(p.amount);
+      if (p.purchase_id) paidForPurchase[p.purchase_id] = (paidForPurchase[p.purchase_id] || 0) + num(p.amount);
     }
     let recv = 0, recvCount = 0;
     for (const r of light) {
@@ -298,6 +307,11 @@ async function loadDashboard() {
     // light select needs ids for per-sale balance
     const payableTotal = payables.reduce((s, r) => s + num(r.amount), 0);
     const payablePaid = pays.filter((p) => p.payable_id).reduce((s, p) => s + num(p.amount), 0);
+    /* purchases still owing (cash + bank + payments haven't covered the total) */
+    const purchaseOwed = purchOwed.reduce((s, r) => {
+      const bal = num(r.amount) - num(r.cash_amount) - num(r.bank_amount) - (paidForPurchase[r.id] || 0);
+      return s + (bal > 0.009 ? bal : 0);
+    }, 0);
 
     const cards = [
       { label: "Total sale", value: money(totalSale), tone: "brand", sub: rangeLabel() },
@@ -313,7 +327,7 @@ async function loadDashboard() {
     if (loan > 0) cards.push({ label: "Loan", value: money(loan), tone: "violet" });
     cards.push(
       { label: "To receive (total)", value: money(recv), tone: "red", sub: `${recvCount} sale${recvCount === 1 ? "" : "s"} still to pay` },
-      { label: "To pay (total)", value: money(payableTotal - payablePaid), tone: "amber", sub: "To dealers & suppliers" }
+      { label: "To pay (total)", value: money(payableTotal - payablePaid + purchaseOwed), tone: "amber", sub: "To dealers & suppliers" }
     );
     $("#dash-cards").innerHTML = cards
       .map(
@@ -541,7 +555,7 @@ const LIST_TABS = {
     date: (r) => r.loan_date, amount: (r) => num(r.amount),
     extra: (r, v) =>
       v === "back" ? !!r.returned_at
-      : v === "late" ? !r.returned_at && !!r.due_date && r.due_date < todayISO()
+      : v === "late" ? !r.returned_at && ((r.due_date && r.due_date < todayISO()) || r.overdueInst)
       : !r.returned_at,
     render: () => renderLoans(),
   },
@@ -1209,16 +1223,35 @@ function renderReceivables() {
 async function loadPayables() {
   busy(true);
   try {
-    const [bR, pR] = await Promise.all([
+    const [bR, pR, puR] = await Promise.all([
       sb.from("payables").select("*").order("entry_date", { ascending: false }),
-      sb.from("payments").select("payable_id,amount,paid_at,method"),
+      sb.from("payments").select("payable_id,purchase_id,amount"),
+      sb.from("purchases").select("*").order("entry_date", { ascending: false }),
     ]);
     if (bR.error) throw bR.error;
     if (pR.error) throw pR.error;
-    const pay = {};
-    for (const p of pR.data || []) if (p.payable_id) pay[p.payable_id] = (pay[p.payable_id] || 0) + num(p.amount);
+    if (puR.error) throw puR.error;
+    const pay = {}, payP = {};
+    for (const p of pR.data || []) {
+      if (p.payable_id) pay[p.payable_id] = (pay[p.payable_id] || 0) + num(p.amount);
+      if (p.purchase_id) payP[p.purchase_id] = (payP[p.purchase_id] || 0) + num(p.amount);
+    }
 
-    state.payRows = (bR.data || []).map((r) => ({ ...r, bal: round2(num(r.amount) - (pay[r.id] || 0)) }));
+    /* what we owe on purchases joins the list — only the still-unpaid part,
+       tagged so the row can open the purchase instead of the owe form */
+    const owedPurchases = (puR.data || [])
+      .map((r) => ({
+        ...r,
+        isPurchase: true,
+        party: r.supplier || oneLine(r.title),
+        bal: round2(num(r.amount) - num(r.cash_amount) - num(r.bank_amount) - (payP[r.id] || 0)),
+      }))
+      .filter((r) => r.bal > 0.009);
+
+    state.payRows = [
+      ...(bR.data || []).map((r) => ({ ...r, bal: round2(num(r.amount) - (pay[r.id] || 0)) })),
+      ...owedPurchases,
+    ].sort((a, b) => String(b.entry_date || "").localeCompare(String(a.entry_date || "")));
     renderPayables();
   } finally {
     busy(false);
@@ -1229,7 +1262,11 @@ function renderPayables() {
   const all = state.payRows || [];
   const q = state.paySearch.toLowerCase();
   const searched = all.filter(
-    (r) => !q || (r.party || "").toLowerCase().includes(q) || (r.notes || "").toLowerCase().includes(q)
+    (r) =>
+      !q ||
+      (r.party || "").toLowerCase().includes(q) ||
+      (r.notes || "").toLowerCase().includes(q) ||
+      (r.title || "").toLowerCase().includes(q)
   );
   const rows = applyListFilters("payables", searched, all);
 
@@ -1237,8 +1274,8 @@ function renderPayables() {
     ? rows
         .map((r) => `<div class="row" data-id="${r.id}">
             <div class="row-main">
-              <div class="row-title">${esc(r.party)}</div>
-              <div class="row-sub">${fmtDate(r.entry_date)}${r.notes ? " · " + esc(r.notes) : ""}</div>
+              <div class="row-title">${esc(r.party)}${r.isPurchase ? ' <span class="badge badge-partial">Purchase</span>' : ""}</div>
+              <div class="row-sub">${fmtDate(r.entry_date)}${r.isPurchase && r.supplier ? " · " + esc(oneLine(r.title)) : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
             </div>
             <div class="row-right">
               <div class="row-amount">${money(r.amount)}</div>
@@ -1261,18 +1298,26 @@ function renderPayables() {
       const r = rows.find((x) => x.id === el.dataset.id);
       el.addEventListener("click", (e) => {
         const act = e.target.closest("[data-act]")?.dataset.act;
-        if (act === "pay") openPaymentModal("payable", r.id, `${r.party} — still to pay ${money(r.bal)}`, r.bal);
-        else if (act === "edit") openPayableForm(r);
+        const target = r.isPurchase ? "purchase" : "payable";
+        if (act === "pay") openPaymentModal(target, r.id, `${r.party} — still to pay ${money(r.bal)}`, r.bal);
+        else if (act === "edit") r.isPurchase ? openPurchaseForm(r) : openPayableForm(r);
         else if (act === "del")
-          askConfirm("Delete this entry?", `Delete ${r.party} (${money(r.amount)})? Payments recorded against it will be removed too.`, async () => {
-            busy(true);
-            const { error } = await sb.from("payables").delete().eq("id", r.id);
-            busy(false);
-            if (error) return toast(error.message, true);
-            toast("Entry deleted");
-            loadPayables();
-          });
-        else if (r.bal > 0.009) openPaymentModal("payable", r.id, `${r.party} — still to pay ${money(r.bal)}`, r.bal);
+          askConfirm(
+            r.isPurchase ? "Delete this purchase?" : "Delete this entry?",
+            r.isPurchase
+              ? `Delete ${oneLine(r.title)} (${money(r.amount)})? Its schedule and payments will be removed too.`
+              : `Delete ${r.party} (${money(r.amount)})? Payments recorded against it will be removed too.`,
+            async () => {
+              busy(true);
+              const { error } = await sb.from(r.isPurchase ? "purchases" : "payables").delete().eq("id", r.id);
+              busy(false);
+              if (error) return toast(error.message, true);
+              toast(r.isPurchase ? "Purchase deleted" : "Entry deleted");
+              if (r.isPurchase && state.view === "purchases") loadPurchases();
+              loadPayables();
+            });
+        else if (r.bal > 0.009) openPaymentModal(target, r.id, `${r.party} — still to pay ${money(r.bal)}`, r.bal);
+        else if (r.isPurchase) openPurchaseForm(r);
         else openPayableForm(r);
       });
     });
@@ -1327,13 +1372,45 @@ async function savePayable(e) {
 async function loadLoans() {
   busy(true);
   try {
-    const { data, error } = await sb
-      .from("personal_loans")
-      .select("*")
-      .order("loan_date", { ascending: false })
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    state.loanRows = data || [];
+    const [lR, iR, pR] = await Promise.all([
+      sb.from("personal_loans").select("*")
+        .order("loan_date", { ascending: false })
+        .order("created_at", { ascending: false }),
+      sb.from("loan_installments").select("loan_id,installment_no,due_date,amount"),
+      sb.from("payments").select("loan_id,amount"),
+    ]);
+    if (lR.error) throw lR.error;
+    if (iR.error) throw iR.error;
+    if (pR.error) throw pR.error;
+
+    const pay = {};
+    for (const p of pR.data || []) if (p.loan_id) pay[p.loan_id] = (pay[p.loan_id] || 0) + num(p.amount);
+    const instMap = {};
+    for (const s of iR.data || []) (instMap[s.loan_id] ||= []).push(s);
+    for (const k of Object.keys(instMap)) instMap[k].sort((a, b) => a.installment_no - b.installment_no);
+
+    const today = todayISO();
+    state.loanRows = (lR.data || []).map((r) => {
+      const received = round2(pay[r.id] || 0);
+      const sched = instMap[r.id] || [];
+      /* payments allocate FIFO over the schedule — same rule as sales */
+      let unpaidBefore = 0, instPaid = 0, overdueInst = false;
+      for (const s of sched) {
+        const a = num(s.amount);
+        const allocated = Math.min(Math.max(received - unpaidBefore, 0), a);
+        unpaidBefore += a;
+        if (a - allocated <= 0.009) instPaid++;
+        else if (s.due_date < today) overdueInst = true;
+      }
+      return {
+        ...r,
+        received,
+        left: round2(num(r.amount) - received),
+        instCount: sched.length,
+        instPaid,
+        overdueInst,
+      };
+    });
     renderLoans();
   } finally {
     busy(false);
@@ -1350,10 +1427,11 @@ function renderLoans() {
 
     const open = rows.filter((r) => !r.returned_at);
     const back = rows.filter((r) => r.returned_at);
-    const late = open.filter((r) => r.due_date && r.due_date < today);
-    const outTotal = open.reduce((s, r) => s + num(r.amount), 0);
+    const late = open.filter((r) => (r.due_date && r.due_date < today) || r.overdueInst);
+    /* "still to get back" = what is actually left of each loan, part by part included */
+    const outTotal = open.reduce((s, r) => s + Math.max(r.left, 0), 0);
     const allTotal = rows.reduce((s, r) => s + num(r.amount), 0);
-    const lateTotal = late.reduce((s, r) => s + num(r.amount), 0);
+    const lateTotal = late.reduce((s, r) => s + Math.max(r.left, 0), 0);
 
     $("#loan-summary").innerHTML = `
       <div class="stat tone-red"><div class="stat-label">Still to get back</div><div class="stat-value">${money(outTotal)}</div><div class="stat-sub">${open.length} loan${open.length === 1 ? "" : "s"} out</div></div>
@@ -1368,17 +1446,21 @@ function renderLoans() {
       ? shown
           .map((r) => {
             const isBack = !!r.returned_at;
-            const isLate = !isBack && r.due_date && r.due_date < today;
+            const isLate = !isBack && ((r.due_date && r.due_date < today) || r.overdueInst);
+            const hasInst = r.instCount > 0;
             return `<div class="row" data-id="${r.id}">
             <div class="row-main">
               <div class="row-title">${esc(r.person)}
                 ${isBack ? '<span class="badge badge-paid">Returned</span>' : isLate ? '<span class="badge badge-overdue">Late</span>' : ""}
               </div>
-              <div class="row-sub">Given ${fmtDate(r.loan_date)}${r.due_date ? " · Back by " + fmtDate(r.due_date) : ""}${isBack ? " · Back on " + fmtDate(String(r.returned_at).slice(0, 10)) : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
+              <div class="row-sub">Given ${fmtDate(r.loan_date)}${r.due_date ? " · Back by " + fmtDate(r.due_date) : ""}${hasInst ? ` · ${r.instCount} installments` : ""}${isBack ? " · Back on " + fmtDate(String(r.returned_at).slice(0, 10)) : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
             </div>
             <div class="row-right">
-              <div class="row-amount ${isBack ? "" : "bal-due"}">${money(r.amount)}</div>
-              <div class="row-bal" style="color:var(--muted)">${isBack ? "returned" : "to get back"}</div>
+              ${isBack || !hasInst
+                ? `<div class="row-amount ${isBack ? "" : "bal-due"}">${money(r.amount)}</div>
+                   <div class="row-bal" style="color:var(--muted)">${isBack ? "returned" : "to get back"}</div>`
+                : `<div class="row-amount ${r.left > 0.009 ? "bal-due" : ""}">${money(Math.max(r.left, 0))}</div>
+                   <div class="row-bal" style="color:var(--muted)">left · ${r.instPaid}/${r.instCount} back</div>`}
             </div>
             <div class="row-actions">
               ${isBack
@@ -1400,7 +1482,7 @@ function renderLoans() {
         else if (act === "undo") setLoanReturned(r, false);
         else if (act === "edit") openLoanForm(r);
         else if (act === "del")
-          askConfirm("Delete this loan?", `Delete the ${money(r.amount)} loan to ${r.person}?`, async () => {
+          askConfirm("Delete this loan?", `Delete the ${money(r.amount)} loan to ${r.person}?${r.instCount ? " Its schedule and returns will also be removed." : ""}`, async () => {
             busy(true);
             const { error } = await sb.from("personal_loans").delete().eq("id", r.id);
             busy(false);
@@ -1408,6 +1490,9 @@ function renderLoans() {
             toast("Loan deleted");
             loadLoans();
           });
+        /* installment loans open their detail sheet (schedule + returns);
+           plain loans still jump straight to the edit form */
+        else if (r.instCount > 0) openLoanDetail(r.id);
         else openLoanForm(r);
       });
     });
@@ -1425,17 +1510,59 @@ async function setLoanReturned(r, returned) {
   loadLoans();
 }
 
-function openLoanForm(r = null) {
-  $("#loan-form").reset();
-  $("#loan-form-error").hidden = true;
-  $("#loan-id").value = r?.id || "";
-  $("#loan-modal-title").textContent = r ? "Edit loan" : "New loan";
-  $("#loan-date").value = r?.loan_date || todayISO();
-  $("#loan-person").value = r?.person || "";
-  $("#loan-amount").value = r ? num(r.amount) : "";
-  $("#loan-due").value = r?.due_date || "";
-  $("#loan-notes").value = r?.notes || "";
-  openModal("modal-loan");
+async function openLoanForm(r = null) {
+  try {
+    $("#loan-form").reset();
+    $("#loan-form-error").hidden = true;
+    $("#loan-id").value = r?.id || "";
+    $("#loan-modal-title").textContent = r ? "Edit loan" : "New loan";
+    $("#loan-date").value = r?.loan_date || todayISO();
+    $("#loan-person").value = r?.person || "";
+    $("#loan-amount").value = r ? num(r.amount) : "";
+    $("#loan-due").value = r?.due_date || "";
+    $("#loan-notes").value = r?.notes || "";
+    $("#loan-installment").checked = false;
+    $("#loan-inst-count").value = "12";
+    $("#loan-inst-first").value = "";
+    if (r) {
+      /* restore the saved schedule: months + first due date */
+      const { data: sched, error } = await sb
+        .from("loan_installments").select("*").eq("loan_id", r.id).order("installment_no");
+      if (error) throw error;
+      if (sched?.length) {
+        $("#loan-installment").checked = true;
+        $("#loan-inst-count").value = String(sched.length);
+        $("#loan-inst-first").value = sched[0].due_date;
+      }
+    }
+    syncLoanForm();
+    openModal("modal-loan");
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+function syncLoanForm() {
+  const inst = $("#loan-installment").checked;
+  $("#loan-inst-fields").hidden = !inst;
+  if (inst) renderLoanInstPreview();
+}
+
+function renderLoanInstPreview() {
+  const total = amt($("#loan-amount").value);
+  const count = Math.max(1, Math.min(120, parseInt($("#loan-inst-count").value, 10) || 0));
+  const first = $("#loan-inst-first").value;
+  const el = $("#loan-inst-preview");
+
+  if (total <= 0) { el.innerHTML = "Enter the amount above to see the schedule."; return; }
+  if (!first) { el.innerHTML = "Pick a first due date to see the schedule."; return; }
+
+  /* the whole loan comes back — nothing is paid up front */
+  const rows = buildSchedule(total, count, first);
+  const per = rows[0]?.amount || 0;
+  el.innerHTML = `
+    <div class="inst-line"><span>${count} × ${money(per)}</span><span>${money(total)} to get back</span></div>
+    <div class="inst-line"><span>First due ${fmtDate(rows[0].due)}</span><span>Last due ${fmtDate(rows[rows.length - 1].due)}</span></div>`;
 }
 
 async function saveLoan(e) {
@@ -1445,6 +1572,11 @@ async function saveLoan(e) {
   const id = $("#loan-id").value;
   const person = $("#loan-person").value.trim();
   const amountN = parseAmount($("#loan-amount").value);
+  const isInst = $("#loan-installment").checked;
+  const count = parseInt($("#loan-inst-count").value, 10) || 0;
+  const first = $("#loan-inst-first").value;
+  const fail = (m) => { errEl.textContent = m; errEl.hidden = false; };
+
   const payload = {
     loan_date: $("#loan-date").value || todayISO(),
     person,
@@ -1452,23 +1584,177 @@ async function saveLoan(e) {
     due_date: $("#loan-due").value || null,
     notes: $("#loan-notes").value.trim() || null,
   };
-  if (!person) { errEl.textContent = "Please enter who you gave the money to."; errEl.hidden = false; return; }
-  if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
-  if (payload.amount <= 0) { errEl.textContent = "Enter how much you gave."; errEl.hidden = false; return; }
-  if (payload.due_date && payload.due_date < payload.loan_date) { errEl.textContent = "“Back by” is before the day the money was given."; errEl.hidden = false; return; }
+  if (!person) return fail("Please enter who you gave the money to.");
+  if (Number.isNaN(amountN)) return fail(AMOUNT_HINT);
+  if (payload.amount <= 0) return fail("Enter how much you gave.");
+  if (isInst) {
+    if (count < 1 || count > 120) return fail("Enter between 1 and 120 installments.");
+    if (!first) return fail("Pick the first due date.");
+  }
+
+  /* schedule of returns; when "Back by" is empty it becomes the last due date */
+  let schedule = [];
+  if (isInst) {
+    schedule = buildSchedule(payload.amount, count, first);
+    if (!payload.due_date) payload.due_date = schedule[schedule.length - 1].due;
+  }
+  if (payload.due_date && payload.due_date < payload.loan_date) return fail("“Back by” is before the day the money was given.");
 
   busy(true);
   try {
-    const { error } = id
-      ? await sb.from("personal_loans").update(payload).eq("id", id)
-      : await sb.from("personal_loans").insert(payload);
-    if (error) throw error;
+    let loanId = id;
+    if (id) {
+      const { error } = await sb.from("personal_loans").update(payload).eq("id", id);
+      if (error) throw error;
+    } else {
+      const { data, error } = await sb.from("personal_loans").insert(payload).select("id").single();
+      if (error) throw error;
+      loanId = data.id;
+    }
+
+    /* the schedule always follows what the form says (same rebuild rule as sales) */
+    if (id) {
+      const { error: delErr } = await sb.from("loan_installments").delete().eq("loan_id", loanId);
+      if (delErr) throw delErr;
+    }
+    if (schedule.length) {
+      const rows = schedule.map((r) => ({
+        loan_id: loanId, installment_no: r.no, due_date: r.due, amount: r.amount,
+      }));
+      const { error } = await sb.from("loan_installments").insert(rows);
+      if (error) throw error;
+    }
+
     closeModals();
     toast(id ? "Loan updated" : "Loan added");
     loadLoans();
   } catch (err) {
-    errEl.textContent = err.message;
-    errEl.hidden = false;
+    fail(err.message);
+  } finally {
+    busy(false);
+  }
+}
+
+/* ============ loan detail (installment loans: schedule + returns) ============ */
+async function openLoanDetail(id) {
+  busy(true);
+  try {
+    const [lR, iR, pR] = await Promise.all([
+      sb.from("personal_loans").select("*").eq("id", id).single(),
+      sb.from("loan_installments").select("*").eq("loan_id", id).order("installment_no"),
+      sb.from("payments").select("*").eq("loan_id", id).order("paid_at"),
+    ]);
+    if (lR.error) throw lR.error;
+    const loan = lR.data;
+    const inst = iR.data || [];
+    const pays = pR.data || [];
+
+    const received = pays.reduce((s, p) => s + num(p.amount), 0);
+    const left = round2(num(loan.amount) - received);
+    const today = todayISO();
+
+    /* installment statuses: returns allocate FIFO over the schedule */
+    let unpaidBefore = 0, nextDue = null, overdueInst = false;
+    const instHtml = inst
+      .map((row) => {
+        const amount = num(row.amount);
+        const allocated = Math.min(Math.max(received - unpaidBefore, 0), amount);
+        unpaidBefore += amount;
+        const short = round2(amount - allocated);
+        let status = "paid";
+        if (short > 0.009) {
+          if (nextDue === null) nextDue = row.due_date;
+          if (row.due_date < today) { status = "overdue"; overdueInst = true; }
+          else status = allocated > 0 ? "partial" : "pending";
+        }
+        return `<div class="inst-row ${status === "overdue" ? "is-overdue" : status === "paid" ? "is-paid" : ""}">
+          <span class="inst-no">#${row.installment_no}</span>
+          <span class="inst-due">${fmtDate(row.due_date)}</span>
+          <span class="inst-amt">${money(amount)}</span>
+          <span class="badge badge-${status}">${status}</span>
+        </div>`;
+      })
+      .join("");
+
+    const isLate = !loan.returned_at && ((loan.due_date && loan.due_date < today) || overdueInst);
+
+    const paysHtml = pays.length
+      ? pays
+          .map(
+            (p) => `<div class="pay-item">
+            <div class="pi-main"><b>${money(p.amount)}</b> <span class="badge badge-${p.method}">${p.method}</span>
+              <div class="pi-sub">${fmtDate(p.paid_at)}${p.notes ? " · " + esc(p.notes) : ""}</div>
+            </div>
+            <button type="button" class="icon-del" data-delpay="${p.id}" title="Delete return">✕</button>
+          </div>`
+          )
+          .join("")
+      : `<div class="empty" style="padding:16px">No returns recorded yet.</div>`;
+
+    $("#loan-detail-body").innerHTML = `
+      <div class="row-title" style="font-size:18px">${esc(loan.person)}
+        ${loan.returned_at ? '<span class="badge badge-paid">Returned</span>' : isLate ? '<span class="badge badge-overdue">Late</span>' : inst.length ? '<span class="badge badge-pending">Installments</span>' : ""}
+      </div>
+      <div class="row-sub" style="margin-bottom:12px">Given ${fmtDate(loan.loan_date)}${loan.due_date ? " · Back by " + fmtDate(loan.due_date) : ""}${loan.notes ? " · " + esc(loan.notes) : ""}</div>
+
+      <div class="detail-grid">
+        <div class="stat tone-brand"><div class="stat-label">Given</div><div class="stat-value">${money(loan.amount)}</div></div>
+        <div class="stat tone-violet"><div class="stat-label">Received back</div><div class="stat-value">${money(received)}</div>
+          <div class="stat-sub">${pays.length} return${pays.length === 1 ? "" : "s"}</div></div>
+        <div class="stat ${left > 0.009 ? "tone-red" : "tone-green"}"><div class="stat-label">Left to get back</div>
+          <div class="stat-value">${money(Math.max(left, 0))}</div></div>
+        <div class="stat ${nextDue && nextDue < today ? "tone-red" : "tone-amber"}"><div class="stat-label">Next due</div>
+          <div class="stat-value">${nextDue ? fmtDate(nextDue) : left > 0.009 ? "—" : "All in"}</div>
+          ${nextDue || left > 0.009 ? "" : `<div class="stat-sub">every installment received</div>`}</div>
+      </div>
+
+      <div class="detail-actions">
+        <button type="button" class="btn btn-primary btn-sm" id="loan-detail-return-btn">+ Record return</button>
+        ${loan.returned_at
+          ? `<button type="button" class="btn btn-ghost btn-sm" id="loan-detail-back-btn">↩ Not back yet</button>`
+          : `<button type="button" class="btn btn-ghost btn-sm" id="loan-detail-back-btn">✓ Returned</button>`}
+        <button type="button" class="btn btn-ghost btn-sm" id="loan-detail-edit-btn">Edit</button>
+        <button type="button" class="btn btn-danger btn-sm" id="loan-detail-del-btn">Delete</button>
+      </div>
+
+      ${inst.length ? `<div class="section-label">Installment schedule</div>${instHtml}` : ""}
+      <div class="section-label">Returns received</div>
+      ${paysHtml}`;
+
+    $("#loan-detail-return-btn").onclick = () => {
+      if (left <= 0.009) return toast("The full amount is already back.", true);
+      openPaymentModal("loan", loan.id, `${loan.person} — still to get back ${money(left)}`, left);
+    };
+    $("#loan-detail-back-btn").onclick = async () => {
+      await setLoanReturned(loan, !loan.returned_at);
+      openLoanDetail(loan.id).catch(() => {});
+    };
+    $("#loan-detail-edit-btn").onclick = () => openLoanForm(loan);
+    $("#loan-detail-del-btn").onclick = () =>
+      askConfirm("Delete loan?", `Delete the ${money(loan.amount)} loan to ${loan.person}? Its schedule and returns will also be removed.`, async () => {
+        busy(true);
+        const { error } = await sb.from("personal_loans").delete().eq("id", loan.id);
+        busy(false);
+        if (error) return toast(error.message, true);
+        closeModals();
+        toast("Loan deleted");
+        loadLoans();
+      });
+    $$("#loan-detail-body [data-delpay]").forEach((b) =>
+      b.addEventListener("click", () =>
+        askConfirm("Delete return?", "This return will be removed and the amounts updated.", async () => {
+          busy(true);
+          const { error } = await sb.from("payments").delete().eq("id", b.dataset.delpay);
+          busy(false);
+          if (error) return toast(error.message, true);
+          toast("Return deleted");
+          openLoanDetail(loan.id);
+          loadLoans();
+        })
+      )
+    );
+
+    openModal("modal-loan-detail");
   } finally {
     busy(false);
   }
@@ -1485,6 +1771,10 @@ async function loadExpenses() {
       .order("created_at", { ascending: false });
     if (error) throw error;
     state.expenseRows = data || [];
+    /* past payees pop up as suggestions in the "Paid to" field */
+    $("#expense-payees").innerHTML = [...new Set(state.expenseRows.map((r) => r.payee).filter(Boolean))]
+      .map((n) => `<option value="${esc(n)}"></option>`)
+      .join("");
     renderExpenses();
   } finally {
     busy(false);
@@ -1510,6 +1800,7 @@ function renderExpenses() {
     (r) =>
       !q ||
       (r.title || "").toLowerCase().includes(q) ||
+      (r.payee || "").toLowerCase().includes(q) ||
       (r.notes || "").toLowerCase().includes(q)
   );
   const shown = applyListFilters("expenses", searched, rows);
@@ -1520,7 +1811,7 @@ function renderExpenses() {
           (r) => `<div class="row" data-id="${r.id}">
             <div class="row-main">
               <div class="row-title">${esc(r.title)}</div>
-              <div class="row-sub">${fmtDate(r.entry_date)}${r.notes ? " · " + esc(r.notes) : ""}</div>
+              <div class="row-sub">${fmtDate(r.entry_date)}${r.payee ? " · Paid to: " + esc(r.payee) : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
             </div>
             <div class="row-right">
               <div class="row-amount bal-due">${money(r.amount)}</div>
@@ -1562,6 +1853,7 @@ function openExpenseForm(r = null) {
   $("#expense-id").value = r?.id || "";
   $("#expense-modal-title").textContent = r ? "Edit expense" : "New expense";
   $("#expense-date").value = r?.entry_date || todayISO();
+  $("#expense-payee").value = r?.payee || "";
   $("#expense-title").value = r?.title || "";
   $("#expense-amount").value = r ? num(r.amount) : "";
   $("#expense-notes").value = r?.notes || "";
@@ -1576,10 +1868,12 @@ async function saveExpense(e) {
   const amountN = parseAmount($("#expense-amount").value);
   const payload = {
     entry_date: $("#expense-date").value || todayISO(),
+    payee: $("#expense-payee").value.trim(),
     title: $("#expense-title").value.trim(),
     amount: round2(amountN),
     notes: $("#expense-notes").value.trim() || null,
   };
+  if (!payload.payee) { errEl.textContent = "Please enter who the money was given to (Paid to)."; errEl.hidden = false; return; }
   if (!payload.title) { errEl.textContent = "Please enter what the expense was for."; errEl.hidden = false; return; }
   if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
   if (payload.amount <= 0) { errEl.textContent = "Enter how much was spent."; errEl.hidden = false; return; }
@@ -1608,13 +1902,44 @@ const oneLine = (s) => String(s || "").replace(/\s*\n\s*/g, " · ");
 async function loadPurchases() {
   busy(true);
   try {
-    const { data, error } = await sb
-      .from("purchases")
-      .select("*")
-      .order("entry_date", { ascending: false })
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    state.purchaseRows = data || [];
+    const [pR, payR, iR] = await Promise.all([
+      sb.from("purchases").select("*")
+        .order("entry_date", { ascending: false })
+        .order("created_at", { ascending: false }),
+      sb.from("payments").select("purchase_id,amount"),
+      sb.from("purchase_installments").select("purchase_id,installment_no,due_date,amount"),
+    ]);
+    if (pR.error) throw pR.error;
+    if (payR.error) throw payR.error;
+    if (iR.error) throw iR.error;
+
+    const pay = {};
+    for (const p of payR.data || []) if (p.purchase_id) pay[p.purchase_id] = (pay[p.purchase_id] || 0) + num(p.amount);
+    const instMap = {};
+    for (const s of iR.data || []) (instMap[s.purchase_id] ||= []).push(s);
+    for (const k of Object.keys(instMap)) instMap[k].sort((a, b) => a.installment_no - b.installment_no);
+
+    const today = todayISO();
+    state.purchaseRows = (pR.data || []).map((r) => {
+      const paid = round2(pay[r.id] || 0);
+      const bal = round2(num(r.amount) - num(r.cash_amount) - num(r.bank_amount) - paid);
+      /* schedule status: payments allocate FIFO over the rows, like sales */
+      const sched = instMap[r.id] || [];
+      let unpaidBefore = 0, instPaid = 0, overdueInst = false;
+      for (const s of sched) {
+        const a = num(s.amount);
+        const allocated = Math.min(Math.max(paid - unpaidBefore, 0), a);
+        unpaidBefore += a;
+        if (a - allocated <= 0.009) instPaid++;
+        else if (s.due_date < today) overdueInst = true;
+      }
+      const status = !sched.length ? null
+        : bal <= 0.009 ? "paid"
+        : overdueInst ? "overdue"
+        : paid > 0 ? "partial"
+        : "pending";
+      return { ...r, bal, paid, instCount: sched.length, instPaid, status };
+    });
     renderPurchases();
   } finally {
     busy(false);
@@ -1650,14 +1975,15 @@ function renderPurchases() {
         .map(
           (r) => `<div class="row" data-id="${r.id}">
             <div class="row-main">
-              <div class="row-title">${esc(oneLine(r.title))}</div>
-              <div class="row-sub">${fmtDate(r.entry_date)}${r.supplier ? " · " + esc(r.supplier) : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
+              <div class="row-title">${esc(oneLine(r.title))}${r.status ? `<span class="badge badge-${r.status}">${r.status}</span>` : ""}</div>
+              <div class="row-sub">${fmtDate(r.entry_date)}${r.supplier ? " · " + esc(r.supplier) : ""}${r.instCount ? ` · ${r.instPaid}/${r.instCount} installments paid` : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
             </div>
             <div class="row-right">
-              <div class="row-amount bal-due">${money(r.amount)}</div>
-              <div class="row-bal" style="color:var(--muted)">bought</div>
+              <div class="row-amount ${r.bal > 0.009 ? "bal-due" : ""}">${money(r.amount)}</div>
+              <div class="row-bal" style="color:var(--muted)">${r.bal > 0.009 ? money(r.bal) + " left" : "bought"}</div>
             </div>
             <div class="row-actions">
+              ${r.bal > 0.009 ? `<button type="button" class="btn btn-sm btn-primary" data-act="pay">+ Pay</button>` : ""}
               <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
               <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
             </div>
@@ -1672,7 +1998,8 @@ function renderPurchases() {
     const r = rows.find((x) => x.id === el.dataset.id);
     el.addEventListener("click", (e) => {
       const act = e.target.closest("[data-act]")?.dataset.act;
-      if (act === "edit") openPurchaseForm(r);
+      if (act === "pay") openPaymentModal("purchase", r.id, `${oneLine(r.title)} — still to pay ${money(r.bal)}`, r.bal);
+      else if (act === "edit") openPurchaseForm(r);
       else if (act === "del")
         askConfirm("Delete this purchase?", `Delete ${oneLine(r.title)} (${money(r.amount)})?`, async () => {
           busy(true);
@@ -1700,7 +2027,7 @@ function syncPurchaseMode() {
   );
 }
 
-function openPurchaseForm(r = null) {
+async function openPurchaseForm(r = null) {
   $("#purchase-form").reset();
   $("#purchase-form-error").hidden = true;
   $("#purchase-id").value = r?.id || "";
@@ -1714,9 +2041,60 @@ function openPurchaseForm(r = null) {
   $("#purchase-statement").value = mode === "batch" ? String(r.title || "").replace(/\s*\n\s*/g, " ") : "";
   $("#purchase-supplier").value = r?.supplier || "";
   $("#purchase-amount").value = r ? num(r.amount) : "";
+  /* how it was paid + the installment schedule, restored for editing */
+  $("#purchase-cash").value = r && num(r.cash_amount) > 0 ? num(r.cash_amount) : "";
+  $("#purchase-bank").value = r && num(r.bank_amount) > 0 ? num(r.bank_amount) : "";
+  $("#purchase-installment").checked = false;
+  $("#purchase-inst-count").value = "12";
+  $("#purchase-inst-first").value = "";
+  if (r) {
+    const { data: sched, error } = await sb
+      .from("purchase_installments").select("*").eq("purchase_id", r.id).order("installment_no");
+    if (error) throw error;
+    if (sched?.length) {
+      $("#purchase-installment").checked = true;
+      $("#purchase-inst-count").value = String(sched.length);
+      $("#purchase-inst-first").value = sched[0].due_date;
+    }
+  }
   $("#purchase-notes").value = r?.notes || "";
   syncPurchaseMode();
+  syncPurchaseForm();
   openModal("modal-purchase");
+}
+
+function syncPurchaseForm() {
+  const total = amt($("#purchase-amount").value);
+  const paid = amt($("#purchase-cash").value) + amt($("#purchase-bank").value);
+  const due = round2(total - paid);
+  $("#purchase-paid-summary").innerHTML =
+    total <= 0
+      ? `Enter the amount above — what is paid and what is left shows here.`
+      : `Paid now: <b>${money(paid)}</b>` +
+        ` &nbsp;·&nbsp; Left to pay: <b>${money(Math.max(due, 0))}</b>` +
+        (paid > total + 0.009 ? `<br><span style="color:var(--red)">The paid amount is more than the total — fix it before saving.</span>` : "");
+
+  const inst = $("#purchase-installment").checked;
+  $("#purchase-inst-fields").hidden = !inst;
+  if (inst) renderPurchaseInstPreview();
+}
+
+function renderPurchaseInstPreview() {
+  const total = amt($("#purchase-amount").value);
+  const paid = amt($("#purchase-cash").value) + amt($("#purchase-bank").value);
+  const financed = round2(total - paid);
+  const count = Math.max(1, Math.min(120, parseInt($("#purchase-inst-count").value, 10) || 0));
+  const first = $("#purchase-inst-first").value;
+  const el = $("#purchase-inst-preview");
+
+  if (financed <= 0) { el.innerHTML = "Everything is already paid, so there is nothing left to split into installments."; return; }
+  if (!first) { el.innerHTML = "Pick a first due date to see the schedule."; return; }
+
+  const rows = buildSchedule(financed, count, first);
+  const per = rows[0]?.amount || 0;
+  el.innerHTML = `
+    <div class="inst-line"><span>${count} × ${money(per)}</span><span>${money(financed)} financed</span></div>
+    <div class="inst-line"><span>First due ${fmtDate(rows[0].due)}</span><span>Last due ${fmtDate(rows[rows.length - 1].due)}</span></div>`;
 }
 
 async function savePurchase(e) {
@@ -1727,34 +2105,78 @@ async function savePurchase(e) {
   const modeEl = $$("#purchase-mode input").find((x) => x.checked);
   const mode = modeEl ? modeEl.value : "";
   const amountN = parseAmount($("#purchase-amount").value);
+  const cashN = parseAmount($("#purchase-cash").value);
+  const bankN = parseAmount($("#purchase-bank").value);
+  const isInst = $("#purchase-installment").checked;
+  const count = parseInt($("#purchase-inst-count").value, 10) || 0;
+  const first = $("#purchase-inst-first").value;
   const items = mode === "batch"
     ? [$("#purchase-statement").value.trim()].filter(Boolean)
     : itemValues("purchase");
+
+  const fail = (m) => { errEl.textContent = m; errEl.hidden = false; };
+  if (!mode) return fail("First choose whether this is a batch purchase or a local purchase.");
+  if (!items.length) return fail(mode === "batch" ? "Please write what was bought as one statement — how many machines, probes, etc." : "Please enter what was bought — pick a machine, tick the boxes, or add a line.");
+  if ([amountN, cashN, bankN].some(Number.isNaN)) return fail(AMOUNT_HINT);
+
+  const total = round2(amountN);
+  const cash = round2(cashN);
+  const bank = round2(bankN);
+  const financed = round2(total - cash - bank);
+  if (total <= 0) return fail("Enter how much was paid for it.");
+  if (cash + bank > total + 0.009) return fail("The paid amount can't be more than the total purchase.");
+  if (isInst) {
+    if (financed <= 0) return fail("For installments, leave some amount unpaid (total minus paid).");
+    if (count < 1 || count > 120) return fail("Enter between 1 and 120 installments.");
+    if (!first) return fail("Pick the first due date.");
+  } else if (financed > 0.009) {
+    return fail(`${money(financed)} of the total is still uncovered — enter the rest as cash/bank or tick installments below.`);
+  }
+
   const payload = {
     entry_date: $("#purchase-date").value || todayISO(),
     title: items.join("\n"),
     supplier: $("#purchase-supplier").value.trim() || null,
-    amount: round2(amountN),
+    amount: total,
+    cash_amount: cash,
+    bank_amount: bank,
     notes: $("#purchase-notes").value.trim() || null,
     mode,
   };
-  if (!mode) { errEl.textContent = "First choose whether this is a batch purchase or a local purchase."; errEl.hidden = false; return; }
-  if (!items.length) { errEl.textContent = mode === "batch" ? "Please write what was bought as one statement — how many machines, probes, etc." : "Please enter what was bought — pick a machine, tick the boxes, or add a line."; errEl.hidden = false; return; }
-  if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
-  if (payload.amount <= 0) { errEl.textContent = "Enter how much was paid for it."; errEl.hidden = false; return; }
 
   busy(true);
   try {
-    const { error } = id
-      ? await sb.from("purchases").update(payload).eq("id", id)
-      : await sb.from("purchases").insert(payload);
-    if (error) throw error;
+    let purchaseId = id;
+    if (id) {
+      const { error } = await sb.from("purchases").update(payload).eq("id", id);
+      if (error) throw error;
+    } else {
+      const { data, error } = await sb.from("purchases").insert(payload).select("id").single();
+      if (error) throw error;
+      purchaseId = data.id;
+    }
+
+    /* schedule always follows the form — rebuild on edit like sales */
+    if (id) {
+      const { error: delErr } = await sb.from("purchase_installments").delete().eq("purchase_id", purchaseId);
+      if (delErr) throw delErr;
+    }
+    if (isInst) {
+      const rows = buildSchedule(financed, count, first).map((r) => ({
+        purchase_id: purchaseId, installment_no: r.no, due_date: r.due, amount: r.amount,
+      }));
+      if (rows.length) {
+        const { error } = await sb.from("purchase_installments").insert(rows);
+        if (error) throw error;
+      }
+    }
+
     closeModals();
     toast(id ? "Purchase updated" : "Purchase added");
+    if (state.view === "payables") loadPayables();
     loadPurchases();
   } catch (err) {
-    errEl.textContent = err.message;
-    errEl.hidden = false;
+    fail(err.message);
   } finally {
     busy(false);
   }
@@ -1883,6 +2305,7 @@ async function saveZakat(e) {
 function openPaymentModal(type, id, context, max) {
   state.returnTo = $$(".modal").find((m) => !m.hidden)?.id || null;
   state.returnSaleId = type === "sale" ? id : null;
+  state.returnLoanId = type === "loan" ? id : null;
   $("#payment-form").reset();
   $("#payment-form-error").hidden = true;
   $("#pay-target-type").value = type;
@@ -1918,6 +2341,8 @@ async function savePayment(e) {
     notes: $("#pay-notes").value.trim() || null,
     sale_id: type === "sale" ? id : null,
     payable_id: type === "payable" ? id : null,
+    purchase_id: type === "purchase" ? id : null,
+    loan_id: type === "loan" ? id : null,
   };
 
   busy(true);
@@ -1928,11 +2353,29 @@ async function savePayment(e) {
     const left = round2(max - amount);
     if (left > 0.009) toast("Payment added");
     else if (type === "sale") toast("Fully paid ✓ — nothing left to receive");
+    else if (type === "loan") toast("Fully received ✓ — nothing left to get back");
     else toast("Fully paid ✓ — nothing left to pay");
+
+    /* a loan whose last installment came back is marked Returned by itself */
+    if (type === "loan" && left <= 0.009) {
+      const { error: rErr } = await sb
+        .from("personal_loans")
+        .update({ returned_at: new Date().toISOString() })
+        .eq("id", id)
+        .is("returned_at", null);
+      if (rErr) toast(rErr.message, true);
+    }
+
     if (type === "sale") {
       openSaleDetail(id);
       if (state.view === "sales") loadSales();
       else if (state.view === "receivables") loadReceivables();
+    } else if (type === "loan") {
+      openLoanDetail(id);
+      loadLoans();
+    } else if (type === "purchase") {
+      if (state.view === "payables") loadPayables();
+      loadPurchases();
     } else {
       loadPayables();
     }
@@ -2101,6 +2544,11 @@ function bindEvents() {
     state.loanSearch = e.target.value;
     renderLoans();
   });
+  /* installment return schedule: amount + tick + months + first due date */
+  ["loan-amount", "loan-inst-count", "loan-inst-first"].forEach(
+    (id) => $("#" + id).addEventListener("input", syncLoanForm)
+  );
+  $("#loan-installment").addEventListener("change", syncLoanForm);
 
   /* expenses */
   $("#new-expense-btn").addEventListener("click", () => openExpenseForm());
@@ -2130,6 +2578,11 @@ function bindEvents() {
     state.purchaseSearch = e.target.value;
     renderPurchases();
   });
+  /* payment (cash/bank) + installment schedule fields */
+  ["purchase-amount", "purchase-cash", "purchase-bank", "purchase-inst-count", "purchase-inst-first"].forEach(
+    (id) => $("#" + id).addEventListener("input", syncPurchaseForm)
+  );
+  $("#purchase-installment").addEventListener("change", syncPurchaseForm);
 
   /* zakat */
   $("#new-zakat-btn").addEventListener("click", () => openZakatForm());
