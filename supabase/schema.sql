@@ -20,6 +20,8 @@ create table if not exists public.sales (
   cash_amount    numeric(14,2) not null default 0 check (cash_amount >= 0),
   bank_amount    numeric(14,2) not null default 0 check (bank_amount >= 0),
   adjustment_amount numeric(14,2) not null default 0 check (adjustment_amount >= 0),
+  adjustment_method text check (adjustment_method is null or adjustment_method in ('cash','bank')),
+  adjustment_item   text,
   loan_amount    numeric(14,2) not null default 0 check (loan_amount >= 0),
   is_installment boolean not null default false,
   notes          text,

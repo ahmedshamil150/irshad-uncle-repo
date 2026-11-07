@@ -367,6 +367,20 @@
                 <input type="text" id="sale-adjustment" class="amt" inputmode="decimal" autocomplete="off" placeholder="0" />
               </label>
             </div>
+            <div id="adjustment-extra" hidden>
+              <div class="grid-2">
+                <label class="field"><span>Adjustment settled as</span>
+                  <select id="sale-adjustment-method">
+                    <option value="">— choose —</option>
+                    <option value="cash">Cash</option>
+                    <option value="bank">Bank</option>
+                  </select>
+                </label>
+                <label class="field"><span>Adjusted item (optional)</span>
+                  <input type="text" id="sale-adjustment-item" placeholder="e.g. old Logiq 2015" />
+                </label>
+              </div>
+            </div>
             <small class="hint"><b>Adjustment</b> = worth of an old machine given in trade — it counts as paid, and what is left over is what goes to installments. Leave empty if none. Amounts can be written as 5lac, 50hazar or 2cr.</small>
           </div>
         </details>

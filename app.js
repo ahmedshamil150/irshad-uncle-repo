@@ -470,7 +470,7 @@ function renderSales() {
                 <span class="badge badge-${r.source}">${esc(srcName(r.source))}</span>
                 ${r.is_installment ? '<span class="badge badge-pending">Installment</span>' : ""}
               </div>
-              <div class="row-sub">${fmtDate(r.sale_date)}${r.item_description ? " · " + esc(itemsText(r.item_description)) : ""}</div>
+              <div class="row-sub">${fmtDate(r.sale_date)}${r.item_description ? " · " + esc(itemsText(r.item_description)) : ""}${num(r.adjustment_amount) > 0 ? " · Adj " + money(r.adjustment_amount) + (r.adjustment_method ? " (" + r.adjustment_method + ")" : "") + (r.adjustment_item ? " · " + esc(r.adjustment_item) : "") : ""}</div>
             </div>
             <div class="row-right">
               <div class="row-amount">${money(r.total_amount)}</div>
@@ -579,7 +579,7 @@ async function openSaleDetail(id) {
       <div class="detail-grid">
         <div class="stat tone-brand"><div class="stat-label">Total sale</div><div class="stat-value">${money(sale.total_amount)}</div></div>
         <div class="stat tone-green"><div class="stat-label">Paid upfront</div><div class="stat-value">${money(paidAtSale)}</div>
-          <div class="stat-sub">Cash ${money(sale.cash_amount)} · Bank ${money(sale.bank_amount)}${num(sale.adjustment_amount) > 0 ? ` · Adjustment ${money(sale.adjustment_amount)}` : ""}${num(sale.loan_amount) > 0 ? ` · Loan ${money(sale.loan_amount)}` : ""}</div></div>
+          <div class="stat-sub">Cash ${money(sale.cash_amount)} · Bank ${money(sale.bank_amount)}${num(sale.adjustment_amount) > 0 ? ` · Adjustment ${money(sale.adjustment_amount)}${sale.adjustment_method ? ` (${sale.adjustment_method})` : ""}${sale.adjustment_item ? ` · ${esc(sale.adjustment_item)}` : ""}` : ""}${num(sale.loan_amount) > 0 ? ` · Loan ${money(sale.loan_amount)}` : ""}</div></div>
         <div class="stat tone-violet"><div class="stat-label">Payments received</div><div class="stat-value">${money(received)}</div></div>
         <div class="stat ${outstanding > 0.009 ? "tone-red" : "tone-green"}"><div class="stat-label">Left to receive</div>
           <div class="stat-value">${money(Math.max(outstanding, 0))}</div></div>
@@ -735,6 +735,8 @@ function openSaleForm(sale = null) {
   $("#sale-cash").value = sale && num(sale.cash_amount) ? num(sale.cash_amount) : "";
   $("#sale-bank").value = sale && num(sale.bank_amount) ? num(sale.bank_amount) : "";
   $("#sale-adjustment").value = sale && num(sale.adjustment_amount) ? num(sale.adjustment_amount) : "";
+  $("#sale-adjustment-method").value = sale?.adjustment_method || "";
+  $("#sale-adjustment-item").value = sale?.adjustment_item || "";
   $("#sale-loan").value = sale ? num(sale.loan_amount) : 0;
   $("#sale-installment").checked = !!sale?.is_installment;
   $("#sale-notes").value = sale?.notes || "";
@@ -819,6 +821,7 @@ function syncSaleForm() {
   const total = amt($("#sale-total").value);
   const paid = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-adjustment").value) + amt($("#sale-loan").value);
   const adj = amt($("#sale-adjustment").value);
+  $("#adjustment-extra").hidden = adj <= 0;   /* tag + item name only apply to a real adjustment */
   const due = round2(total - paid);
   $("#sale-paid-summary").innerHTML =
     total <= 0
@@ -913,6 +916,8 @@ async function saveSale(e) {
     cash_amount: cash,
     bank_amount: bank,
     adjustment_amount: adjustment,
+    adjustment_method: adjustment > 0 ? ($("#sale-adjustment-method").value || null) : null,
+    adjustment_item: adjustment > 0 ? ($("#sale-adjustment-item").value.trim() || null) : null,
     loan_amount: loan,
     is_installment: isInst,
     notes: $("#sale-notes").value.trim() || null,
