@@ -34,11 +34,11 @@ const fmtDate = (iso) => {
 /* office / dealer / salesman → Office / Dealer / Salesman */
 const srcName = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
 
-/* ---------- friendly money entry: "5lac", "50hazar", "2cr", "5,00,000" → number ---------- */
+/* ---------- friendly money entry: "5l", "50k", "2million", "5,00,000" → number ---------- */
 const AMOUNT_UNITS = {
-  crore: 1e7, cr: 1e7,
-  lakh: 1e5, lac: 1e5, lak: 1e5, l: 1e5,
-  hazar: 1e3, hajar: 1e3, hazaar: 1e3, hazzar: 1e3, thousand: 1e3, k: 1e3,
+  million: 1e6, m: 1e6,   /* 1 million = 10 lac */
+  l: 1e5,         /* lac */
+  k: 1e3,         /* thousand */
 };
 /* Returns a number, or NaN when the text cannot be read as an amount. */
 function parseAmount(v) {
@@ -52,7 +52,7 @@ function parseAmount(v) {
   while ((m = re.exec(s))) {
     let mult = 1;
     if (m[2]) {
-      const unit = m[2].replace(/s$/, "");   /* lacs → lac, crores → crore, lakhs → lakh */
+      const unit = m[2].replace(/s$/, "");   /* millions → million */
       if (!(unit in AMOUNT_UNITS)) return NaN;
       mult = AMOUNT_UNITS[unit];
     }
@@ -65,7 +65,7 @@ function parseAmount(v) {
 }
 /* Safe read for live previews (garbage shows as 0, save-time validation catches it). */
 const amt = (v) => { const n = parseAmount(v); return Number.isNaN(n) ? 0 : n; };
-const AMOUNT_HINT = "Couldn't read that amount — try 500000, 5lac, 50hazar or 2cr.";
+const AMOUNT_HINT = "Couldn't read that amount — try 500000, 5l, 50k or 2million.";
 
 /* several item lines are stored as one newline-separated text column */
 const itemsText = (s) =>
@@ -2523,7 +2523,7 @@ function bindEvents() {
     });
   }
 
-  /* money fields: focus selects everything, blur turns 5lac into 500000 */
+  /* money fields: focus selects everything, blur turns 5l into 500000 */
   document.addEventListener("focusin", (e) => {
     if (e.target.matches?.(".amt")) e.target.select();
   });
