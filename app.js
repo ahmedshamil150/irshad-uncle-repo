@@ -1718,10 +1718,6 @@ function openPaymentModal(type, id, context, max) {
   /* pre-fill the whole remaining balance: if he paid everything, just pick cash/bank and Save */
   $("#pay-amount").value = full > 0 ? String(full) : "";
   $("#pay-amount").placeholder = "Up to " + money(max);
-  $("#pay-amount-hint").textContent =
-    full > 0
-      ? `Filled with the full ${money(full)} — he paid everything? Just choose Cash or Bank and Save. If he paid part of it, type what he actually paid.`
-      : "How much came in — 50000, 50hazar or 0.5lac all work.";
   openModal("modal-payment");
 }
 

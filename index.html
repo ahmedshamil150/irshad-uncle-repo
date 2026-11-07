@@ -269,7 +269,6 @@
         <div class="grid-2">
           <label class="field"><span>Date *</span>
             <input type="date" id="sale-date" required />
-            <small class="hint">The day the machine was sold.</small>
           </label>
           <label class="field"><span>Sold through *</span>
             <select id="sale-source" required>
@@ -278,14 +277,12 @@
               <option value="salesman">Salesman</option>
               <option value="reference">Reference</option>
             </select>
-            <small class="hint">Office, dealer, one of our salesmen — or a reference who referred the sale.</small>
           </label>
         </div>
 
         <label class="field" id="dealer-field" hidden><span>Dealer name</span>
           <input type="text" id="sale-dealer" list="dealer-names" placeholder="Dealer name (optional)" />
           <datalist id="dealer-names"></datalist>
-          <small class="hint">Optional — write the dealer's name if you want it noted.</small>
         </label>
 
         <label class="field" id="salesman-field" hidden><span>Salesman name *</span>
@@ -294,19 +291,16 @@
             <button type="button" id="add-salesman-btn" class="btn btn-ghost">+ Add</button>
           </div>
           <datalist id="salesman-names"></datalist>
-          <small class="hint">Pick a name from the list, or tap + Add to save a new one.</small>
         </label>
 
         <label class="field" id="reference-field" hidden><span>Reference name *</span>
           <input type="text" id="sale-reference" list="ref-names" placeholder="Name of the reference" />
           <datalist id="ref-names"></datalist>
-          <small class="hint">Write the name of the person who referred this sale.</small>
         </label>
 
         <label class="field"><span>Customer name *</span>
           <input type="text" id="sale-customer" required list="customer-names" placeholder="Customer name" />
           <datalist id="customer-names"></datalist>
-          <small class="hint">Start typing to reuse a customer's old name.</small>
         </label>
 
         <div class="field"><span>Items / machines</span>
@@ -349,12 +343,10 @@
 
           <div id="sale-items" class="item-list"></div>
           <button type="button" id="add-item-btn" class="btn btn-sm btn-ghost item-add">+ Add manually</button>
-          <small class="hint">Pick a machine and tick the printer / probes above, or type your own line — one line per item.</small>
         </div>
 
         <label class="field"><span>Total sale (Rs) *</span>
           <input type="text" id="sale-total" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 5lac" />
-          <small class="hint">Type it however you like: 500000, 5lac, 50hazar or 0.5cr — it converts.</small>
         </label>
 
         <div class="paid-summary" id="sale-paid-summary"></div>
@@ -387,7 +379,6 @@
                 </label>
               </div>
             </div>
-            <small class="hint"><b>Adjustment</b> = worth of an old machine given in trade — it counts as paid, and what is left over is what goes to installments. Leave empty if none. Amounts can be written as 5lac, 50hazar or 2cr.</small>
           </div>
         </details>
 
@@ -415,7 +406,6 @@
 
         <label class="field"><span>Notes</span>
           <textarea id="sale-notes" rows="2" placeholder="Anything else worth remembering"></textarea>
-          <small class="hint">Belongs to the sale itself — anything worth remembering about it.</small>
         </label>
 
         <p id="sale-form-error" class="form-error" hidden></p>
@@ -444,7 +434,6 @@
           </label>
           <label class="field"><span>Amount (Rs) *</span>
             <input type="text" id="pay-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 50000" />
-            <small class="hint" id="pay-amount-hint">How much came in — 50000, 50hazar or 0.5lac all work.</small>
           </label>
         </div>
         <label class="field"><span>Paid by</span>
@@ -480,12 +469,10 @@
           </label>
           <label class="field"><span>Amount (Rs) *</span>
             <input type="text" id="payable-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 2lac" />
-            <small class="hint">How much you owe — 200000, 2lac or 200hazar all work.</small>
           </label>
         </div>
         <label class="field"><span>Dealer / supplier *</span>
           <input type="text" id="payable-party" required placeholder="Who do you owe?" />
-          <small class="hint">The dealer or supplier you have to pay.</small>
         </label>
         <label class="field"><span>Notes</span>
           <input type="text" id="payable-notes" placeholder="Optional" />
@@ -511,21 +498,17 @@
         <div class="grid-2">
           <label class="field"><span>Given on *</span>
             <input type="date" id="loan-date" required />
-            <small class="hint">The day you gave the money.</small>
           </label>
           <label class="field"><span>Back by</span>
             <input type="date" id="loan-due" />
-            <small class="hint">Optional — when he will give it back.</small>
           </label>
         </div>
         <label class="field"><span>Gave to *</span>
           <input type="text" id="loan-person" required list="loan-names" placeholder="Name of the person" />
           <datalist id="loan-names"></datalist>
-          <small class="hint">Who you gave the money to.</small>
         </label>
         <label class="field"><span>Amount (Rs) *</span>
           <input type="text" id="loan-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 5lac" />
-          <small class="hint">How much you gave — 500000, 5lac, 50hazar or 2cr all work.</small>
         </label>
         <label class="field"><span>Notes</span>
           <input type="text" id="loan-notes" placeholder="Optional" />
@@ -550,7 +533,6 @@
         <input type="hidden" id="expense-id" />
         <label class="field"><span>Date *</span>
           <input type="date" id="expense-date" required />
-          <small class="hint">The day the money was spent.</small>
         </label>
         <label class="field"><span>What was it for? *</span>
           <input type="text" id="expense-title" list="expense-kinds" required placeholder="e.g. Shop rent" />
@@ -566,11 +548,9 @@
             <option value="Tea / lunch"></option>
             <option value="Packing & transport"></option>
           </datalist>
-          <small class="hint">Rent, salary, bill, fuel — anything money was spent on. Pick a suggestion or type your own.</small>
         </label>
         <label class="field"><span>Amount (Rs) *</span>
           <input type="text" id="expense-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 20hazar" />
-          <small class="hint">20000, 20hazar, 0.5lac all work.</small>
         </label>
         <label class="field"><span>Notes</span>
           <input type="text" id="expense-notes" placeholder="Optional" />
@@ -595,7 +575,6 @@
         <input type="hidden" id="purchase-id" />
         <label class="field"><span>Date *</span>
           <input type="date" id="purchase-date" required />
-          <small class="hint">The day it was bought.</small>
         </label>
         <div class="field"><span>What was bought? *</span>
           <div class="mode-pick" id="purchase-mode">
@@ -610,11 +589,9 @@
               <small>Pick each item — machines, probes</small>
             </label>
           </div>
-          <small class="hint">Pick which kind this is first — the input below changes accordingly.</small>
 
           <label class="field" id="purchase-statement-field" hidden><span>What was bought (one statement) *</span>
             <input type="text" id="purchase-statement" placeholder="e.g. 5 machines, 20 probes, 3 printers" />
-            <small class="hint">One line — write how many machines, probes, printers etc. were bought.</small>
           </label>
 
           <div id="purchase-picker-area" hidden>
@@ -657,7 +634,6 @@
 
             <div id="purchase-items" class="item-list"></div>
             <button type="button" id="add-purchase-item-btn" class="btn btn-sm btn-ghost item-add">+ Add manually</button>
-            <small class="hint">Same as a sale — pick a machine, tick what came with it, or type your own line. One line per item.</small>
           </div>
         </div>
         <label class="field"><span>Supplier</span>
@@ -665,7 +641,6 @@
         </label>
         <label class="field"><span>Amount (Rs) *</span>
           <input type="text" id="purchase-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 12lac" />
-          <small class="hint">1200000, 12lac, 50hazar all work.</small>
         </label>
         <label class="field"><span>Notes</span>
           <input type="text" id="purchase-notes" placeholder="Optional" />
@@ -690,11 +665,9 @@
         <input type="hidden" id="zakat-id" />
         <label class="field"><span>Date *</span>
           <input type="date" id="zakat-date" required />
-          <small class="hint">The day the zakat was given.</small>
         </label>
         <label class="field"><span>Amount (Rs) *</span>
           <input type="text" id="zakat-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 50hazar" />
-          <small class="hint">50000, 50hazar, 0.5lac all work.</small>
         </label>
         <label class="field"><span>Notes</span>
           <input type="text" id="zakat-notes" placeholder="Optional — e.g. on whose behalf" />
