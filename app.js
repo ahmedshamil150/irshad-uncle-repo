@@ -574,7 +574,7 @@ async function openSaleDetail(id) {
       <div class="row-title" style="font-size:18px">${esc(sale.customer_name)}
         <span class="badge badge-${sale.source}">${esc(srcName(sale.source))}</span>
       </div>
-      <div class="row-sub" style="margin-bottom:12px">${fmtDate(sale.sale_date)}${sale.item_description ? " · " + esc(itemsText(sale.item_description)) : ""}${sale.salesman_name ? " · " + esc(sale.salesman_name) : ""}${sale.reference_name ? " · Ref: " + esc(sale.reference_name) : ""}</div>
+      <div class="row-sub" style="margin-bottom:12px">${fmtDate(sale.sale_date)}${sale.item_description ? " · " + esc(itemsText(sale.item_description)) : ""}${sale.dealer_name ? " · Dealer: " + esc(sale.dealer_name) : ""}${sale.salesman_name ? " · " + esc(sale.salesman_name) : ""}${sale.reference_name ? " · Ref: " + esc(sale.reference_name) : ""}</div>
 
       <div class="detail-grid">
         <div class="stat tone-brand"><div class="stat-label">Total sale</div><div class="stat-value">${money(sale.total_amount)}</div></div>
@@ -648,6 +648,14 @@ async function loadSalesmen() {
 function syncRefNames() {
   $("#ref-names").innerHTML = state.salesmen
     .map((s) => `<option value="${esc(s.name)}"></option>`)
+    .join("");
+}
+
+/* suggestions for the dealer name: dealers used on past sales */
+function syncDealerNames() {
+  const names = [...new Set((state.sales || []).map((s) => s.dealer_name).filter(Boolean))];
+  $("#dealer-names").innerHTML = names
+    .map((n) => `<option value="${esc(n)}"></option>`)
     .join("");
 }
 
@@ -727,8 +735,10 @@ function openSaleForm(sale = null) {
   $("#sale-date").value = sale?.sale_date || todayISO();
   $("#sale-source").value = sale?.source || "office";
   $("#sale-salesman").value = sale?.salesman_name || "";
+  $("#sale-dealer").value = sale?.dealer_name || "";
   $("#sale-reference").value = sale?.reference_name || "";
   syncRefNames();
+  syncDealerNames();
   $("#sale-customer").value = sale?.customer_name || "";
   renderItems(sale?.item_description);
   $("#sale-total").value = sale ? num(sale.total_amount) : "";
@@ -815,6 +825,7 @@ function syncItemChecks(scope = "sale") {
 
 function syncSaleForm() {
   const src = $("#sale-source").value;
+  $("#dealer-field").hidden = src !== "dealer";
   $("#salesman-field").hidden = src !== "salesman";
   $("#reference-field").hidden = src !== "reference";
 
@@ -910,6 +921,7 @@ async function saveSale(e) {
     customer_name: customer,
     source,
     salesman_name: source === "salesman" ? $("#sale-salesman").value.trim() : null,
+    dealer_name: source === "dealer" ? $("#sale-dealer").value.trim() || null : null,
     reference_name: source === "reference" ? refName : null,
     item_description: itemValues().join("\n") || null,
     total_amount: total,

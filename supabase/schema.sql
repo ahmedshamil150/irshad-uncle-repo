@@ -113,6 +113,7 @@ create table if not exists public.zakat (
 -- Newer columns on existing installs (no-ops on a fresh database).
 alter table public.sales add column if not exists reference_type text check (reference_type in ('office','salesman'));
 alter table public.sales add column if not exists reference_name text;
+alter table public.sales add column if not exists dealer_name text;
 
 -- ============ INDEXES ============
 create index if not exists idx_sales_date     on public.sales (sale_date desc);
