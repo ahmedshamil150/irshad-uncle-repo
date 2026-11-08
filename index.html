@@ -1011,8 +1011,25 @@
   <div id="toast" class="toast" hidden></div>
   <div id="busy" class="busy" hidden><div class="spinner"></div></div>
 
+  <!-- Third-party library, then the app's own config, then our code.
+       Our JS lives in js/ and loads in this order (main.js must be last,
+       it starts the app): foundation → shared engines → each screen. -->
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script src="js/core.js"></script>         <!-- helpers + Supabase client -->
+  <script src="js/navigation.js"></script>   <!-- state + tab switching -->
+  <script src="js/auth.js"></script>         <!-- login / session -->
+  <script src="js/filters.js"></script>      <!-- shared ⚙ Filters engine -->
+  <script src="js/items.js"></script>        <!-- shared item picker -->
+  <script src="js/dashboard.js"></script>
+  <script src="js/sales.js"></script>
+  <script src="js/receivables.js"></script>
+  <script src="js/payables.js"></script>
+  <script src="js/loans.js"></script>
+  <script src="js/expenses.js"></script>
+  <script src="js/purchases.js"></script>
+  <script src="js/zakat.js"></script>
+  <script src="js/payments.js"></script>     <!-- shared payment sheet -->
+  <script src="js/main.js"></script>         <!-- wires buttons, then boot() -->
 </body>
 </html>

@@ -26,15 +26,31 @@ Works on laptop and phone. Currency: PKR.
 ## Files
 
 ```
-index.html            app shell (screens + modals)
+index.html            app shell (screens + modals), loads the js/ files in order
 styles.css            styling, mobile-first
-app.js                all logic (Supabase auth + CRUD)
+js/                   all app logic — one file per feature (explained in CODE_GUIDE.md)
+  core.js               foundation: Supabase client + helpers (money, dates, modals)
+  auth.js               login screen + session
+  navigation.js         shared state object + tab switching
+  filters.js            the shared ⚙ Filters engine (used by 6 list tabs)
+  items.js              item picker shared by the Sale and Purchase forms
+  dashboard.js          dashboard totals for the chosen date range
+  sales.js              sales list, detail sheet, salesmen, sale form
+  receivables.js        "To receive" (customers still owe us)
+  payables.js           "To pay" (we owe dealers/suppliers)
+  loans.js              money given out + detail sheet + return schedule
+  expenses.js           money spent
+  purchases.js          things bought (batch or local)
+  zakat.js              zakat given
+  payments.js           the shared payment sheet (sale / owe / purchase / loan)
+  main.js               wires every button to its code, then starts the app (loads last)
 vendor/supabase.js    supabase-js library, served locally (no CDN needed)
 build.js              builds dist/, injects Supabase config from env vars
 package.json          npm scripts (build / start)
 vercel.json           Vercel build command + output directory
 .env.example          template for local environment variables
 supabase/schema.sql   database tables, RLS, login user
+CODE_GUIDE.md         plain-English walkthrough of the code + technologies used
 ```
 
 ## Setup
