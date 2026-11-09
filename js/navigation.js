@@ -9,11 +9,11 @@
 /* ============ navigation ============ */
 const state = {
   view: "dashboard",
-  range: "month",
+  range: "month",   // dashboard date range: "month" | "year" | "custom"
   from: null,
   to: null,
   sales: [],
-  salesPay: {},
+  salesPay: {},   // sale id → total paid so far (subtracted from the balance due)
   salesmen: [],
   search: "",
   /* sales filters (⚙ Filters panel) */

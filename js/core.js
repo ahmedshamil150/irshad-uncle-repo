@@ -9,6 +9,7 @@
    ============================================================ */
 
 /* ============ client & helpers ============ */
+// Fail fast with a readable page when config.js was never loaded.
 if (!window.ENV?.SUPABASE_URL || !window.ENV?.SUPABASE_ANON_KEY) {
   document.body.innerHTML =
     '<div style="padding:30px;font-family:sans-serif;max-width:640px;margin:auto">' +
@@ -17,6 +18,7 @@ if (!window.ENV?.SUPABASE_URL || !window.ENV?.SUPABASE_ANON_KEY) {
     "do not serve the project root directly.</p></div>";
   throw new Error("config.js missing");
 }
+// Fail fast too if the bundled Supabase library is missing or blocked.
 if (!window.supabase?.createClient) {
   document.body.innerHTML =
     '<div style="padding:30px;font-family:sans-serif;max-width:640px;margin:auto">' +

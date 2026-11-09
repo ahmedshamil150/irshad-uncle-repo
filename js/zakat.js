@@ -6,6 +6,7 @@
    ============================================================ */
 
 /* ============ zakat (money given out as zakat) ============ */
+/* Pull every zakat row from the database (newest first), then redraw */
 async function loadZakat() {
   busy(true);
   try {
@@ -22,11 +23,14 @@ async function loadZakat() {
   }
 }
 
+/* Redraw the summary cards, run search + filters, then list the rows */
 function renderZakat() {
   const rows = state.zakatRows;
   const today = todayISO();
+  /* today split into "YYYY-MM" and "YYYY" prefixes used to group rows below */
   const month = today.slice(0, 7);
   const year = today.slice(0, 4);
+  /* rows grouped by the current month / year feed the summary cards */
   const inMonth = rows.filter((r) => String(r.entry_date).startsWith(month));
   const inYear = rows.filter((r) => String(r.entry_date).startsWith(year));
   const sum = (list) => list.reduce((s, r) => s + num(r.amount), 0);
@@ -37,9 +41,12 @@ function renderZakat() {
     <div class="stat tone-violet"><div class="stat-label">All time</div><div class="stat-value">${money(sum(rows))}</div><div class="stat-sub">${rows.length} recorded</div></div>`;
 
   const q = state.zakatSearch.toLowerCase();
+  /* first the search box narrows by notes text ... */
   const searched = rows.filter((r) => !q || (r.notes || "").toLowerCase().includes(q));
+  /* ... then the shared ⚙ filter panel narrows that result further */
   const shown = applyListFilters("zakat", searched, rows);
 
+  /* one row per entry, or an empty-state message if nothing matched */
   $("#zakat-list").innerHTML = shown.length
     ? shown
         .map(
@@ -63,10 +70,11 @@ function renderZakat() {
         listFiltersActive("zakat") ? "No zakat entries match these filters." : "No zakat entries yet."
       }</div>`;
 
+  /* wire each row: Edit / ✕ buttons, or a plain click on the row opens the form */
   $$("#zakat-list .row").forEach((el) => {
     const r = rows.find((x) => x.id === el.dataset.id);
     el.addEventListener("click", (e) => {
-      const act = e.target.closest("[data-act]")?.dataset.act;
+      const act = e.target.closest("[data-act]")?.dataset.act;   // which button was hit (null = plain row click)
       if (act === "edit") openZakatForm(r);
       else if (act === "del")
         askConfirm("Delete this zakat?", `Delete ${money(r.amount)} from ${fmtDate(r.entry_date)}?`, async () => {

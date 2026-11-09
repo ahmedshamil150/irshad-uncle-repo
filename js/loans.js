@@ -8,9 +8,12 @@
    ============================================================ */
 
 /* ============ personal loans (money we gave out) ============ */
+
+/* Pull every loan plus its schedule and returns from the DB, then rebuild the list. */
 async function loadLoans() {
   busy(true);
   try {
+    /* fetch loans, installment schedules and recorded returns together (one query each) */
     const [lR, iR, pR] = await Promise.all([
       sb.from("personal_loans").select("*")
         .order("loan_date", { ascending: false })
@@ -22,12 +25,14 @@ async function loadLoans() {
     if (iR.error) throw iR.error;
     if (pR.error) throw pR.error;
 
+    /* index returns by loan, and schedule rows by loan (sorted by installment no) */
     const pay = {};
     for (const p of pR.data || []) if (p.loan_id) pay[p.loan_id] = (pay[p.loan_id] || 0) + num(p.amount);
     const instMap = {};
     for (const s of iR.data || []) (instMap[s.loan_id] ||= []).push(s);
     for (const k of Object.keys(instMap)) instMap[k].sort((a, b) => a.installment_no - b.installment_no);
 
+    /* per loan: what came back, what's left, installments settled, and if any is overdue */
     const today = todayISO();
     state.loanRows = (lR.data || []).map((r) => {
       const received = round2(pay[r.id] || 0);
@@ -56,14 +61,17 @@ async function loadLoans() {
   }
 }
 
+/* Redraw the loans screen: person suggestions, summary cards and the row list. */
 function renderLoans() {
     const rows = state.loanRows;
     const today = todayISO();
 
+    /* unique people already lent to — powers the search box suggestions */
     $("#loan-names").innerHTML = [...new Set(rows.map((r) => r.person))]
       .map((n) => `<option value="${esc(n)}"></option>`)
       .join("");
 
+    /* split into still-out vs returned, and flag anything past due (or with an overdue installment) */
     const open = rows.filter((r) => !r.returned_at);
     const back = rows.filter((r) => r.returned_at);
     const late = open.filter((r) => (r.due_date && r.due_date < today) || r.overdueInst);
@@ -72,18 +80,22 @@ function renderLoans() {
     const allTotal = rows.reduce((s, r) => s + num(r.amount), 0);
     const lateTotal = late.reduce((s, r) => s + Math.max(r.left, 0), 0);
 
+    /* three summary cards: still to get back, past the due date, total given */
     $("#loan-summary").innerHTML = `
       <div class="stat tone-red"><div class="stat-label">Still to get back</div><div class="stat-value">${money(outTotal)}</div><div class="stat-sub">${open.length} loan${open.length === 1 ? "" : "s"} out</div></div>
       <div class="stat tone-amber"><div class="stat-label">Past the due date</div><div class="stat-value">${late.length}</div><div class="stat-sub">${money(lateTotal)} late</div></div>
       <div class="stat tone-brand"><div class="stat-label">Given out (all)</div><div class="stat-value">${money(allTotal)}</div><div class="stat-sub">${back.length} returned</div></div>`;
 
+    /* search box + ⚙ filters decide which rows are actually shown */
     const q = state.loanSearch.toLowerCase();
     const searched = rows.filter((r) => !q || (r.person || "").toLowerCase().includes(q));
     const shown = applyListFilters("loans", searched, rows);
 
+    /* build the rows: badges, dates, money left and each row's buttons */
     $("#loan-list").innerHTML = shown.length
       ? shown
           .map((r) => {
+            /* per row: returned? late? does it have an installment schedule? */
             const isBack = !!r.returned_at;
             const isLate = !isBack && ((r.due_date && r.due_date < today) || r.overdueInst);
             const hasInst = r.instCount > 0;
@@ -113,6 +125,7 @@ function renderLoans() {
           .join("")
       : `<div class="empty">${listFiltersActive("loans") ? "No loans match these filters." : "No loans yet."}</div>`;
 
+    /* wire each row: action buttons (returned / edit / delete) and clicking the row itself */
     $$("#loan-list .row").forEach((el) => {
       const r = rows.find((x) => x.id === el.dataset.id);
       el.addEventListener("click", (e) => {
@@ -137,6 +150,7 @@ function renderLoans() {
     });
 }
 
+/* Flip a loan between "returned" and "still to get back" (sets/clears returned_at). */
 async function setLoanReturned(r, returned) {
   busy(true);
   const { error } = await sb
@@ -149,8 +163,10 @@ async function setLoanReturned(r, returned) {
   loadLoans();
 }
 
+/* Open the loan form: blank for a new loan, or filled in to edit an existing one. */
 async function openLoanForm(r = null) {
   try {
+    /* start clean, then fill in the loan's values (defaults when adding new) */
     $("#loan-form").reset();
     $("#loan-form-error").hidden = true;
     $("#loan-id").value = r?.id || "";
@@ -181,18 +197,21 @@ async function openLoanForm(r = null) {
   }
 }
 
+/* Show/hide the installment fields based on the checkbox, and refresh the preview. */
 function syncLoanForm() {
   const inst = $("#loan-installment").checked;
   $("#loan-inst-fields").hidden = !inst;
   if (inst) renderLoanInstPreview();
 }
 
+/* Preview the return schedule: how much × how many, plus first/last due date. */
 function renderLoanInstPreview() {
   const total = amt($("#loan-amount").value);
-  const count = Math.max(1, Math.min(120, parseInt($("#loan-inst-count").value, 10) || 0));
+  const count = Math.max(1, Math.min(120, parseInt($("#loan-inst-count").value, 10) || 0));   /* clamp to 1..120; blank/junk becomes 1 */
   const first = $("#loan-inst-first").value;
   const el = $("#loan-inst-preview");
 
+  /* nothing to show until there's an amount and a first due date */
   if (total <= 0) { el.innerHTML = "Enter the amount above to see the schedule."; return; }
   if (!first) { el.innerHTML = "Pick a first due date to see the schedule."; return; }
 
@@ -204,6 +223,7 @@ function renderLoanInstPreview() {
     <div class="inst-line"><span>First due ${fmtDate(rows[0].due)}</span><span>Last due ${fmtDate(rows[rows.length - 1].due)}</span></div>`;
 }
 
+/* Validate the form, then save the loan (insert or update) and rebuild its schedule. */
 async function saveLoan(e) {
   e.preventDefault();
   const errEl = $("#loan-form-error");
@@ -216,6 +236,7 @@ async function saveLoan(e) {
   const first = $("#loan-inst-first").value;
   const fail = (m) => { errEl.textContent = m; errEl.hidden = false; };
 
+  /* the row we'll write to personal_loans (the id only decides update vs insert) */
   const payload = {
     loan_date: $("#loan-date").value || todayISO(),
     person,
@@ -223,6 +244,7 @@ async function saveLoan(e) {
     due_date: $("#loan-due").value || null,
     notes: $("#loan-notes").value.trim() || null,
   };
+  /* validate before touching the database: who, how much, and a sane schedule */
   if (!person) return fail("Please enter who you gave the money to.");
   if (Number.isNaN(amountN)) return fail(AMOUNT_HINT);
   if (payload.amount <= 0) return fail("Enter how much you gave.");
@@ -239,6 +261,7 @@ async function saveLoan(e) {
   }
   if (payload.due_date && payload.due_date < payload.loan_date) return fail("“Back by” is before the day the money was given.");
 
+  /* save: insert a new loan or update the existing row, then rebuild the schedule */
   busy(true);
   try {
     let loanId = id;
@@ -275,9 +298,12 @@ async function saveLoan(e) {
 }
 
 /* ============ loan detail (installment loans: schedule + returns) ============ */
+
+/* Load one loan with its schedule and returns, fill and open the detail sheet. */
 async function openLoanDetail(id) {
   busy(true);
   try {
+    /* loan row, its installment schedule and every recorded return — one query each */
     const [lR, iR, pR] = await Promise.all([
       sb.from("personal_loans").select("*").eq("id", id).single(),
       sb.from("loan_installments").select("*").eq("loan_id", id).order("installment_no"),
@@ -288,12 +314,13 @@ async function openLoanDetail(id) {
     const inst = iR.data || [];
     const pays = pR.data || [];
 
+    /* money received = sum of all returns; left = amount given minus that */
     const received = pays.reduce((s, p) => s + num(p.amount), 0);
     const left = round2(num(loan.amount) - received);
     const today = todayISO();
 
     /* installment statuses: returns allocate FIFO over the schedule */
-    let unpaidBefore = 0, nextDue = null, overdueInst = false;
+    let unpaidBefore = 0, nextDue = null, overdueInst = false;   /* unpaidBefore walks the schedule; nextDue = first unpaid due date */
     const instHtml = inst
       .map((row) => {
         const amount = num(row.amount);
@@ -315,8 +342,10 @@ async function openLoanDetail(id) {
       })
       .join("");
 
+    /* late = past its "Back by" date or holding an overdue installment, and not yet returned */
     const isLate = !loan.returned_at && ((loan.due_date && loan.due_date < today) || overdueInst);
 
+    /* one line per recorded return with a delete button (or a "none yet" note) */
     const paysHtml = pays.length
       ? pays
           .map(
@@ -330,6 +359,7 @@ async function openLoanDetail(id) {
           .join("")
       : `<div class="empty" style="padding:16px">No returns recorded yet.</div>`;
 
+    /* build the sheet: title + badges, dates, totals, action buttons, schedule, returns */
     $("#loan-detail-body").innerHTML = `
       <div class="row-title" style="font-size:18px">${esc(loan.person)}
         ${loan.returned_at ? '<span class="badge badge-paid">Returned</span>' : isLate ? '<span class="badge badge-overdue">Late</span>' : inst.length ? '<span class="badge badge-pending">Installments</span>' : ""}
@@ -360,6 +390,7 @@ async function openLoanDetail(id) {
       <div class="section-label">Returns received</div>
       ${paysHtml}`;
 
+    /* wire the sheet's buttons: record a return, toggle returned, edit, delete */
     $("#loan-detail-return-btn").onclick = () => {
       if (left <= 0.009) return toast("The full amount is already back.", true);
       openPaymentModal("loan", loan.id, `${loan.person} — still to get back ${money(left)}`, left);
@@ -379,6 +410,7 @@ async function openLoanDetail(id) {
         toast("Loan deleted");
         loadLoans();
       });
+    /* the ✕ on each recorded return deletes just that return (after confirmation) */
     $$("#loan-detail-body [data-delpay]").forEach((b) =>
       b.addEventListener("click", () =>
         askConfirm("Delete return?", "This return will be removed and the amounts updated.", async () => {

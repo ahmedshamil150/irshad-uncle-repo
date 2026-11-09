@@ -7,10 +7,13 @@
    ============================================================ */
 
 /* ============ payments ============ */
+// Prepares and opens the shared payment sheet for whichever target is receiving money.
 function openPaymentModal(type, id, context, max) {
+  // Remember which modal opened this one, so we can go back to it after saving.
   state.returnTo = $$(".modal").find((m) => !m.hidden)?.id || null;
   state.returnSaleId = type === "sale" ? id : null;
   state.returnLoanId = type === "loan" ? id : null;
+  // Start from a clean form: today's date, no errors, and the target (type + id) stored in hidden fields.
   $("#payment-form").reset();
   $("#payment-form-error").hidden = true;
   $("#pay-target-type").value = type;
@@ -34,11 +37,13 @@ async function savePayment(e) {
   const amountN = parseAmount($("#pay-amount").value);
   const max = round2(num(state.payMax));
 
+  // Validate the amount: it must be a real number, above zero, and no more than what is still due.
   if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
   const amount = round2(amountN);
   if (amount <= 0) { errEl.textContent = "Enter how much was paid."; errEl.hidden = false; return; }
   if (amount > max + 0.009) { errEl.textContent = `That is more than the remaining ${money(max)}.`; errEl.hidden = false; return; }
 
+  // Build the row to insert: exactly one of the *_id columns is filled in, the others stay null.
   const payload = {
     paid_at: $("#pay-date").value || todayISO(),
     amount,
@@ -52,9 +57,11 @@ async function savePayment(e) {
 
   busy(true);
   try {
+    // Save the payment - if this fails we jump to catch and the sheet stays open with the error.
     const { error } = await sb.from("payments").insert(payload);
     if (error) throw error;
     closeModals();
+    // Work out what is still owed/receivable and toast a message that matches the situation.
     const left = round2(max - amount);
     if (left > 0.009) toast("Payment added");
     else if (type === "sale") toast("Fully paid ✓ — nothing left to receive");
@@ -67,10 +74,11 @@ async function savePayment(e) {
         .from("personal_loans")
         .update({ returned_at: new Date().toISOString() })
         .eq("id", id)
-        .is("returned_at", null);
+        .is("returned_at", null); // ... only stamp it once, never overwrite an existing Returned date
       if (rErr) toast(rErr.message, true);
     }
 
+    // Refresh whichever screen the user came from, so the new payment shows up right away.
     if (type === "sale") {
       openSaleDetail(id);
       if (state.view === "sales") loadSales();
@@ -85,6 +93,7 @@ async function savePayment(e) {
       loadPayables();
     }
   } catch (err) {
+    // Database errors are shown inside the sheet instead of closing it.
     errEl.textContent = err.message;
     errEl.hidden = false;
   } finally {

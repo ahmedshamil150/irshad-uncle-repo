@@ -9,9 +9,11 @@
    ============================================================ */
 
 /* ============ sales ============ */
+/* Load every sale plus all its payments, then redraw the list */
 async function loadSales() {
   busy(true);
   try {
+    /* fetch sales and payments together so the balances are ready below */
     const [sR, pR] = await Promise.all([
       sb.from("sales").select("*").order("sale_date", { ascending: false }).order("created_at", { ascending: false }),
       sb.from("payments").select("sale_id,amount"),
@@ -19,10 +21,12 @@ async function loadSales() {
     if (sR.error) throw sR.error;
     if (pR.error) throw pR.error;
     state.sales = sR.data || [];
+    /* total paid so far, per sale id — saleOutstanding() reads this map */
     const pay = {};
     for (const p of pR.data || []) if (p.sale_id) pay[p.sale_id] = (pay[p.sale_id] || 0) + num(p.amount);
     state.salesPay = pay;
 
+    /* refresh the customer-name suggestions from every sale we have */
     $("#customer-names").innerHTML = [
       ...new Set(state.sales.map((r) => r.customer_name)),
     ]
@@ -35,6 +39,7 @@ async function loadSales() {
   }
 }
 
+/* What is still owed on one sale: total minus everything already paid for it */
 function saleOutstanding(r) {
   return round2(
     num(r.total_amount) - num(r.cash_amount) - num(r.bank_amount) - num(r.adjustment_amount) - num(r.loan_amount) - (state.salesPay[r.id] || 0)
@@ -42,11 +47,14 @@ function saleOutstanding(r) {
 }
 
 /* ---- sales filters ---- */
+/* How many of the filter fields are actually filled in */
 function activeFilterCount() {
   const f = state.f;
   return ["source", "salesman", "kind", "status", "from", "to", "min", "max"]
-    .filter((k) => String(f[k] || "").trim() !== "").length;
+    .filter((k) => String(f[k] || "").trim() !== "").length;   /* blank or whitespace-only doesn't count */
 }
+
+/* true when a search term or any filter is set */
 const filtersActive = () => state.search.trim() !== "" || activeFilterCount() > 0;
 
 function filterSales() {

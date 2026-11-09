@@ -16,6 +16,7 @@ const PICKERS = {
   purchase: { list: "#purchase-items",     checks: "#purchase-item-checks", machine: "#purchase-machine-picker", add: "#add-purchase-item-btn" },
 };
 
+/* Build one item line: a text box plus its ✕ remove button */
 function itemRow(value = "") {
   const row = document.createElement("div");
   row.className = "item-row";
@@ -25,13 +26,16 @@ function itemRow(value = "") {
   row.querySelector("input").value = value;
   return row;
 }
+/* Redraw every item line from the stored newline-separated text */
 function renderItems(stored, scope = "sale") {
   const box = $(PICKERS[scope].list);
   box.innerHTML = "";
+  /* one stored string → one item per line; trimmed, blanks dropped */
   const list = String(stored || "").split("\n").map((x) => x.trim()).filter(Boolean);
   (list.length ? list : [""]).forEach((v) => box.appendChild(itemRow(v)));
   syncItemChecks(scope);
 }
+/* The current item lines as trimmed values, with empty lines left out */
 const itemValues = (scope = "sale") =>
   $$(PICKERS[scope].list + " .item-input").map((i) => i.value.trim()).filter(Boolean);
 
@@ -41,15 +45,18 @@ const itemValues = (scope = "sale") =>
 function addNewItem(value, scope = "sale") {
   const v = String(value || "").trim();
   if (!v) return;
+  /* fill the first blank line rather than adding a second row with the same text */
   const empty = $$(PICKERS[scope].list + " .item-input").find((i) => !i.value.trim());
   if (empty) empty.value = v;
   else $(PICKERS[scope].list).appendChild(itemRow(v));
 }
+/* Delete the row whose text matches the value being unticked (ignoring case) */
 function removeItemRow(value, scope = "sale") {
   const want = String(value || "").trim().toLowerCase();
   const hit = $$(PICKERS[scope].list + " .item-input").find((i) => i.value.trim().toLowerCase() === want);
   if (hit) hit.closest(".item-row").remove();
 }
+/* Tick or untick the printer/probe boxes so they match the lines now in the list */
 function syncItemChecks(scope = "sale") {
   const have = itemValues(scope).map((v) => v.toLowerCase());
   $$(PICKERS[scope].checks + " input").forEach((cb) => { cb.checked = have.includes(cb.value.toLowerCase()); });

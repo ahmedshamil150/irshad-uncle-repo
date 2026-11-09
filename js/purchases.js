@@ -9,9 +9,12 @@
 
 /* ============ purchases (things we bought) ============ */
 
+// Fetch every purchase together with its payments and installments, then
+// work out each row's balance and status badge.
 async function loadPurchases() {
   busy(true);
   try {
+    // One round trip per table: purchases, all payments, all installment rows.
     const [pR, payR, iR] = await Promise.all([
       sb.from("purchases").select("*")
         .order("entry_date", { ascending: false })
@@ -23,6 +26,8 @@ async function loadPurchases() {
     if (payR.error) throw payR.error;
     if (iR.error) throw iR.error;
 
+    // Group payments and installments by purchase id, so each purchase can
+    // be scored below with a simple lookup instead of re-scanning the tables.
     const pay = {};
     for (const p of payR.data || []) if (p.purchase_id) pay[p.purchase_id] = (pay[p.purchase_id] || 0) + num(p.amount);
     const instMap = {};
@@ -30,8 +35,10 @@ async function loadPurchases() {
     for (const k of Object.keys(instMap)) instMap[k].sort((a, b) => a.installment_no - b.installment_no);
 
     const today = todayISO();
+    // Per purchase: how much was paid, how much is still owed, and the badge.
     state.purchaseRows = (pR.data || []).map((r) => {
       const paid = round2(pay[r.id] || 0);
+      // Remaining = total price minus what was covered up front (cash + bank) minus later payments.
       const bal = round2(num(r.amount) - num(r.cash_amount) - num(r.bank_amount) - paid);
       /* schedule status: payments allocate FIFO over the rows, like sales */
       const sched = instMap[r.id] || [];
@@ -43,6 +50,8 @@ async function loadPurchases() {
         if (a - allocated <= 0.009) instPaid++;
         else if (s.due_date < today) overdueInst = true;
       }
+      // Badge: no schedule → none; balance cleared → paid; a late installment
+      // → overdue; some money received → partial; otherwise pending.
       const status = !sched.length ? null
         : bal <= 0.009 ? "paid"
         : overdueInst ? "overdue"
@@ -56,6 +65,7 @@ async function loadPurchases() {
   }
 }
 
+// Rebuild the summary cards, the filtered purchase list, and the buttons on each row.
 function renderPurchases() {
   const rows = state.purchaseRows;
   const today = todayISO();
@@ -65,11 +75,14 @@ function renderPurchases() {
   const inYear = rows.filter((r) => String(r.entry_date).startsWith(year));
   const sum = (list) => list.reduce((s, r) => s + num(r.amount), 0);
 
+  // Summary cards: totals and counts for this month, this year, and all time.
   $("#purchase-summary").innerHTML = `
     <div class="stat tone-amber"><div class="stat-label">This month</div><div class="stat-value">${money(sum(inMonth))}</div><div class="stat-sub">${inMonth.length} purchase${inMonth.length === 1 ? "" : "s"}</div></div>
     <div class="stat tone-brand"><div class="stat-label">This year</div><div class="stat-value">${money(sum(inYear))}</div><div class="stat-sub">${inYear.length} purchase${inYear.length === 1 ? "" : "s"}</div></div>
     <div class="stat tone-red"><div class="stat-label">All time</div><div class="stat-value">${money(sum(rows))}</div><div class="stat-sub">${rows.length} recorded</div></div>`;
 
+  // Narrow the rows by the search box (title, supplier, notes), then by the
+  // saved list filters (date range, etc.).
   const q = state.purchaseSearch.toLowerCase();
   const searched = rows.filter(
     (r) =>
@@ -80,6 +93,8 @@ function renderPurchases() {
   );
   const shown = applyListFilters("purchases", searched, rows);
 
+  // One HTML row per purchase: title + status badge, date/supplier/installment
+  // progress, amount + balance, then the action buttons (or an empty message).
   $("#purchase-list").innerHTML = shown.length
     ? shown
         .map(
@@ -104,6 +119,8 @@ function renderPurchases() {
         listFiltersActive("purchases") ? "No purchases match these filters." : "No purchases yet."
       }</div>`;
 
+  // Wire each row's buttons: pay the remaining balance, open the edit form,
+  // or delete after confirmation (clicking elsewhere on the row edits too).
   $$("#purchase-list .row").forEach((el) => {
     const r = rows.find((x) => x.id === el.dataset.id);
     el.addEventListener("click", (e) => {
@@ -130,6 +147,8 @@ function renderPurchases() {
 function syncPurchaseMode() {
   const checked = $$("#purchase-mode input").find((x) => x.checked);
   const mode = checked ? checked.value : "";
+  // Show only the input that matches the chosen mode: the batch statement box
+  // or the local item picker (and never both).
   $("#purchase-statement-field").hidden = mode !== "batch";
   $("#purchase-picker-area").hidden = mode !== "local";
   $$("#purchase-mode .mode-opt").forEach((opt) =>
@@ -137,7 +156,11 @@ function syncPurchaseMode() {
   );
 }
 
+/* ===== purchase form ===== */
+
+// Open the modal: blank for a new purchase, or pre-filled when editing an existing one.
 async function openPurchaseForm(r = null) {
+  // Start from a clean form and reset the error line.
   $("#purchase-form").reset();
   $("#purchase-form-error").hidden = true;
   $("#purchase-id").value = r?.id || "";
@@ -147,6 +170,8 @@ async function openPurchaseForm(r = null) {
      (legacy rows have no mode → batch, which matches how they were written) */
   const mode = r ? (r.mode === "local" ? "local" : "batch") : "";
   $$("#purchase-mode input").forEach((x) => { x.checked = x.value === mode; });
+  // Fill in what was bought: the item picker for local mode, or the free-text
+  // statement (newlines flattened to spaces) for batch mode.
   renderItems(mode === "local" ? r?.title : "", "purchase");
   $("#purchase-statement").value = mode === "batch" ? String(r.title || "").replace(/\s*\n\s*/g, " ") : "";
   $("#purchase-supplier").value = r?.supplier || "";
@@ -154,9 +179,11 @@ async function openPurchaseForm(r = null) {
   /* how it was paid + the installment schedule, restored for editing */
   $("#purchase-cash").value = r && num(r.cash_amount) > 0 ? num(r.cash_amount) : "";
   $("#purchase-bank").value = r && num(r.bank_amount) > 0 ? num(r.bank_amount) : "";
+  // Installment defaults for a fresh form: off, 12 parts, no first due date.
   $("#purchase-installment").checked = false;
   $("#purchase-inst-count").value = "12";
   $("#purchase-inst-first").value = "";
+  // When editing, bring the stored schedule back so the fields match what was saved.
   if (r) {
     const { data: sched, error } = await sb
       .from("purchase_installments").select("*").eq("purchase_id", r.id).order("installment_no");
@@ -168,12 +195,17 @@ async function openPurchaseForm(r = null) {
     }
   }
   $("#purchase-notes").value = r?.notes || "";
+  // Apply the chosen mode, refresh the "paid / left to pay" summary, show the modal.
   syncPurchaseMode();
   syncPurchaseForm();
   openModal("modal-purchase");
 }
 
+// Keep the "paid now / left to pay" summary and the installment fields in
+// step with whatever is typed into the form.
 function syncPurchaseForm() {
+  // Recompute paid vs left from the total, cash and bank boxes, and warn if
+  // the money paid up front overshoots the total.
   const total = amt($("#purchase-amount").value);
   const paid = amt($("#purchase-cash").value) + amt($("#purchase-bank").value);
   const due = round2(total - paid);
@@ -184,22 +216,32 @@ function syncPurchaseForm() {
         ` &nbsp;·&nbsp; Left to pay: <b>${money(Math.max(due, 0))}</b>` +
         (paid > total + 0.009 ? `<br><span style="color:var(--red)">The paid amount is more than the total — fix it before saving.</span>` : "");
 
+  // Show or hide the installment fields, and preview the schedule when they are on.
   const inst = $("#purchase-installment").checked;
   $("#purchase-inst-fields").hidden = !inst;
   if (inst) renderPurchaseInstPreview();
 }
 
+/* ===== installment schedule preview ===== */
+
+// Show how the unpaid balance would be split: count × amount, plus the first
+// and last due dates, so the user can sanity-check it before saving.
 function renderPurchaseInstPreview() {
+  // Only the unpaid part gets split into installments (total minus cash and bank).
   const total = amt($("#purchase-amount").value);
   const paid = amt($("#purchase-cash").value) + amt($("#purchase-bank").value);
   const financed = round2(total - paid);
+  // Clamp the count to 1..120 (blank/garbage input counts as 0 → clamped to 1).
   const count = Math.max(1, Math.min(120, parseInt($("#purchase-inst-count").value, 10) || 0));
   const first = $("#purchase-inst-first").value;
   const el = $("#purchase-inst-preview");
 
+  // Nothing to preview yet if it's fully paid or no first due date is chosen.
   if (financed <= 0) { el.innerHTML = "Everything is already paid, so there is nothing left to split into installments."; return; }
   if (!first) { el.innerHTML = "Pick a first due date to see the schedule."; return; }
 
+  // Build the real schedule, then summarise it: per-installment amount and
+  // the first/last due dates.
   const rows = buildSchedule(financed, count, first);
   const per = rows[0]?.amount || 0;
   el.innerHTML = `
@@ -207,8 +249,14 @@ function renderPurchaseInstPreview() {
     <div class="inst-line"><span>First due ${fmtDate(rows[0].due)}</span><span>Last due ${fmtDate(rows[rows.length - 1].due)}</span></div>`;
 }
 
+/* ===== save purchase ===== */
+
+// Validate the form, then save the purchase row (new or edit) and its
+// installment schedule to the database.
 async function savePurchase(e) {
   e.preventDefault();
+  // Clear the previous error message, then read everything off the form:
+  // mode, amounts, installment settings and the item list.
   const errEl = $("#purchase-form-error");
   errEl.hidden = true;
   const id = $("#purchase-id").value;
@@ -224,17 +272,23 @@ async function savePurchase(e) {
     ? [$("#purchase-statement").value.trim()].filter(Boolean)
     : itemValues("purchase");
 
+  // Helper that shows a message in the form; each check below stops through it.
   const fail = (m) => { errEl.textContent = m; errEl.hidden = false; };
+  // Check everything before touching the database: a mode was chosen, there is
+  // something to save, and the money fields are real numbers.
   if (!mode) return fail("First choose whether this is a batch purchase or a local purchase.");
   if (!items.length) return fail(mode === "batch" ? "Please write what was bought as one statement — how many machines, probes, etc." : "Please enter what was bought — pick a machine, tick the boxes, or add a line.");
   if ([amountN, cashN, bankN].some(Number.isNaN)) return fail(AMOUNT_HINT);
 
+  // Round the money and work out how much is left to finance (total − cash − bank).
   const total = round2(amountN);
   const cash = round2(cashN);
   const bank = round2(bankN);
   const financed = round2(total - cash - bank);
   if (total <= 0) return fail("Enter how much was paid for it.");
   if (cash + bank > total + 0.009) return fail("The paid amount can't be more than the total purchase.");
+  // Installments need something left unpaid to spread out; without them the
+  // cash + bank must cover the whole total.
   if (isInst) {
     if (financed <= 0) return fail("For installments, leave some amount unpaid (total minus paid).");
     if (count < 1 || count > 120) return fail("Enter between 1 and 120 installments.");
@@ -243,6 +297,7 @@ async function savePurchase(e) {
     return fail(`${money(financed)} of the total is still uncovered — enter the rest as cash/bank or tick installments below.`);
   }
 
+  // The row we save: items joined into one title, money rounded, mode stored.
   const payload = {
     entry_date: $("#purchase-date").value || todayISO(),
     title: items.join("\n"),
@@ -256,6 +311,7 @@ async function savePurchase(e) {
 
   busy(true);
   try {
+    // Update the existing row, or insert a new one and keep its id for the schedule.
     let purchaseId = id;
     if (id) {
       const { error } = await sb.from("purchases").update(payload).eq("id", id);
@@ -271,6 +327,7 @@ async function savePurchase(e) {
       const { error: delErr } = await sb.from("purchase_installments").delete().eq("purchase_id", purchaseId);
       if (delErr) throw delErr;
     }
+    // Write the new schedule rows (installment number, due date, amount).
     if (isInst) {
       const rows = buildSchedule(financed, count, first).map((r) => ({
         purchase_id: purchaseId, installment_no: r.no, due_date: r.due, amount: r.amount,
@@ -281,6 +338,7 @@ async function savePurchase(e) {
       }
     }
 
+    // Done: close the modal and refresh this list (and payables if that screen is open).
     closeModals();
     toast(id ? "Purchase updated" : "Purchase added");
     if (state.view === "payables") loadPayables();

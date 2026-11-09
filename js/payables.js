@@ -6,9 +6,12 @@
    ============================================================ */
 
 /* ============ payables ============ */
+// Loads owe entries plus still-unpaid purchases, works out each balance, and draws the list.
 async function loadPayables() {
   busy(true);
   try {
+    // All three queries at once: owe entries, every payment recorded, and purchases
+    // (payments and purchases are needed to calculate how much of each is still unpaid).
     const [bR, pR, puR] = await Promise.all([
       sb.from("payables").select("*").order("entry_date", { ascending: false }),
       sb.from("payments").select("payable_id,purchase_id,amount"),
@@ -17,6 +20,7 @@ async function loadPayables() {
     if (bR.error) throw bR.error;
     if (pR.error) throw pR.error;
     if (puR.error) throw puR.error;
+    // Running totals keyed by id - how much has been paid against each owe entry and each purchase.
     const pay = {}, payP = {};
     for (const p of pR.data || []) {
       if (p.payable_id) pay[p.payable_id] = (pay[p.payable_id] || 0) + num(p.amount);
@@ -30,10 +34,11 @@ async function loadPayables() {
         ...r,
         isPurchase: true,
         party: r.supplier || oneLine(r.title),
-        bal: round2(num(r.amount) - num(r.cash_amount) - num(r.bank_amount) - (payP[r.id] || 0)),
+        bal: round2(num(r.amount) - num(r.cash_amount) - num(r.bank_amount) - (payP[r.id] || 0)), // ... money still missing: total minus cash, bank and payments so far
       }))
       .filter((r) => r.bal > 0.009);
 
+    // Merge both kinds of rows into one list, newest entry first, then draw it.
     state.payRows = [
       ...(bR.data || []).map((r) => ({ ...r, bal: round2(num(r.amount) - (pay[r.id] || 0)) })),
       ...owedPurchases,
@@ -44,8 +49,10 @@ async function loadPayables() {
   }
 }
 
+// Draws the list, applies the search/filters, and wires up each row's Pay/Edit/Delete buttons.
 function renderPayables() {
   const all = state.payRows || [];
+  // Search matches the party name, the notes, or the purchase title.
   const q = state.paySearch.toLowerCase();
   const searched = all.filter(
     (r) =>
@@ -56,6 +63,7 @@ function renderPayables() {
   );
   const rows = applyListFilters("payables", searched, all);
 
+  // Render each row: amount, balance left (or "Paid"), and its action buttons.
   $("#payable-list").innerHTML = rows.length
     ? rows
         .map((r) => `<div class="row" data-id="${r.id}">
@@ -80,6 +88,7 @@ function renderPayables() {
           : "Nothing matches these filters."
       }</div>`;
 
+  // Wire up the row buttons: purchases open the purchase form, owe entries open the owe form.
   $$("#payable-list .row").forEach((el) => {
       const r = rows.find((x) => x.id === el.dataset.id);
       el.addEventListener("click", (e) => {
@@ -102,6 +111,7 @@ function renderPayables() {
               if (r.isPurchase && state.view === "purchases") loadPurchases();
               loadPayables();
             });
+        // Clicking the row itself (not a button): pay when money is still due, otherwise open the form.
         else if (r.bal > 0.009) openPaymentModal(target, r.id, `${r.party} — still to pay ${money(r.bal)}`, r.bal);
         else if (r.isPurchase) openPurchaseForm(r);
         else openPayableForm(r);
@@ -109,6 +119,7 @@ function renderPayables() {
     });
 }
 
+// Opens the owe-entry form - blank for a new entry, filled in when editing an existing one.
 function openPayableForm(r = null) {
   $("#payable-form").reset();
   $("#payable-form-error").hidden = true;
@@ -121,6 +132,7 @@ function openPayableForm(r = null) {
   openModal("modal-payable");
 }
 
+// Validates the owe-entry form, then inserts a new entry or updates an existing one.
 async function savePayable(e) {
   e.preventDefault();
   const errEl = $("#payable-form-error");
@@ -133,12 +145,14 @@ async function savePayable(e) {
     amount: round2(amountN),
     notes: $("#payable-notes").value.trim() || null,
   };
+  // Three checks: the amount is a number, a party is named, and the amount is above zero.
   if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
   if (!payload.party) { errEl.textContent = "Please enter who you owe (dealer / supplier name)."; errEl.hidden = false; return; }
   if (payload.amount <= 0) { errEl.textContent = "Enter the amount you owe."; errEl.hidden = false; return; }
 
   busy(true);
   try {
+    // Update when we arrived with an id (edit mode), otherwise insert a brand-new entry.
     const { error } = id
       ? await sb.from("payables").update(payload).eq("id", id)
       : await sb.from("payables").insert(payload);
@@ -147,6 +161,7 @@ async function savePayable(e) {
     toast(id ? "Entry updated" : "Entry added");
     loadPayables();
   } catch (err) {
+    // Database errors are shown inside the form instead of closing it.
     errEl.textContent = err.message;
     errEl.hidden = false;
   } finally {

@@ -6,6 +6,7 @@
    ============================================================ */
 
 /* ============ expenses (money we spent) ============ */
+/* Pull every expense from the database (newest first), then redraw */
 async function loadExpenses() {
   busy(true);
   try {
@@ -26,11 +27,14 @@ async function loadExpenses() {
   }
 }
 
+/* Redraw the summary cards, run search + filters, then list the rows */
 function renderExpenses() {
   const rows = state.expenseRows;
   const today = todayISO();
+  /* today split into "YYYY-MM" and "YYYY" prefixes used to group rows below */
   const month = today.slice(0, 7);
   const year = today.slice(0, 4);
+  /* rows grouped by the current month / year feed the summary cards */
   const inMonth = rows.filter((r) => String(r.entry_date).startsWith(month));
   const inYear = rows.filter((r) => String(r.entry_date).startsWith(year));
   const sum = (list) => list.reduce((s, r) => s + num(r.amount), 0);
@@ -41,6 +45,7 @@ function renderExpenses() {
     <div class="stat tone-red"><div class="stat-label">All time</div><div class="stat-value">${money(sum(rows))}</div><div class="stat-sub">${rows.length} recorded</div></div>`;
 
   const q = state.expSearch.toLowerCase();
+  /* the search box matches title, paid-to and notes (ignoring case) ... */
   const searched = rows.filter(
     (r) =>
       !q ||
@@ -48,8 +53,10 @@ function renderExpenses() {
       (r.payee || "").toLowerCase().includes(q) ||
       (r.notes || "").toLowerCase().includes(q)
   );
+  /* ... then the shared ⚙ filter panel narrows that result further */
   const shown = applyListFilters("expenses", searched, rows);
 
+  /* one row per expense, or an empty-state message if nothing matched */
   $("#expense-list").innerHTML = shown.length
     ? shown
         .map(
@@ -73,6 +80,7 @@ function renderExpenses() {
         listFiltersActive("expenses") ? "No expenses match these filters." : "No expenses yet."
       }</div>`;
 
+  /* wire each row: Edit / ✕ buttons, or a plain click on the row opens the form */
   $$("#expense-list .row").forEach((el) => {
     const r = rows.find((x) => x.id === el.dataset.id);
     el.addEventListener("click", (e) => {

@@ -9,13 +9,17 @@
 /* ============ auth ============ */
 let user = null;
 
+// Start the app: wire the UI, restore any saved session, then react to future logins/logouts.
 async function boot() {
-  bindEvents();
+  bindEvents();   // hook up every button, form and search box first
+  // Is there a session saved from the last visit?
   const { data } = await sb.auth.getSession();
   handleSession(data.session);
+  // Supabase fires this on every login/logout, so the screen stays in sync.
   sb.auth.onAuthStateChange((_e, s) => handleSession(s));
 }
 
+// Logged in → show the app shell and load the current screen; logged out → show the login screen.
 function handleSession(s) {
   user = s?.user || null;
   if (user) {

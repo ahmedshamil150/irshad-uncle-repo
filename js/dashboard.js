@@ -7,19 +7,24 @@
    ============================================================ */
 
 /* ============ dashboard ============ */
+// Narrows a Supabase query to the range picked in the toolbar (month / year / custom from-to).
 function applyRange(q, col) {
   if (state.range === "month") return q.gte(col, monthStartISO());
   if (state.range === "year") return q.gte(col, yearStartISO());
   if (state.range === "custom") {
+    // Custom range: apply whichever end dates were filled in - either side can be left open.
     if (state.from) q = q.gte(col, state.from);
     if (state.to) q = q.lte(col, state.to);
   }
   return q;
 }
 
+// Loads everything the summary cards need for the current range and draws them.
 async function loadDashboard() {
   busy(true);
   try {
+    // Fetch everything in parallel. Only sales/zakat/purchases are limited to the chosen dates;
+    // payments and payables are read for all time so every balance stays complete.
     const [salesR, lightR, paysR, payablesR, zakatR, purchR, purchOwedR] = await Promise.all([
       applyRange(sb.from("sales").select("*"), "sale_date"),
       sb.from("sales").select("id,total_amount,cash_amount,bank_amount,adjustment_amount,loan_amount"),
@@ -41,12 +46,14 @@ async function loadDashboard() {
     const purchRows = purchR.data || [];
     const purchOwed = purchOwedR.data || [];
 
+    // Add up the sales in the range, broken down by how each one was paid for.
     const totalSale = sales.reduce((s, r) => s + num(r.total_amount), 0);
     const cash = sales.reduce((s, r) => s + num(r.cash_amount), 0);
     const bank = sales.reduce((s, r) => s + num(r.bank_amount), 0);
     const adjustment = sales.reduce((s, r) => s + num(r.adjustment_amount), 0);
     const loan = sales.reduce((s, r) => s + num(r.loan_amount), 0);
 
+    // Bucket every recorded payment by the thing it paid off, so a balance is one lookup by id.
     const paidForSale = {};
     const paidForPayable = {};
     const paidForPurchase = {};
@@ -55,14 +62,17 @@ async function loadDashboard() {
       if (p.payable_id) paidForPayable[p.payable_id] = (paidForPayable[p.payable_id] || 0) + num(p.amount);
       if (p.purchase_id) paidForPurchase[p.purchase_id] = (paidForPurchase[p.purchase_id] || 0) + num(p.amount);
     }
+    // "To receive": a sale counts only when cash + bank + adjustment + loan + payments still
+    // don't cover the total - the leftover is what that customer still owes us.
     let recv = 0, recvCount = 0;
     for (const r of light) {
-      const due = num(r.total_amount) - num(r.cash_amount) - num(r.bank_amount) - num(r.adjustment_amount) - num(r.loan_amount);
+      const due = num(r.total_amount) - num(r.cash_amount) - num(r.bank_amount) - num(r.adjustment_amount) - num(r.loan_amount); // ... owed before counting payments
       const saleId = r.id;
       const bal = due - (paidForSale[saleId] || 0);
       if (bal > 0.009) { recv += bal; recvCount++; }
     }
     // light select needs ids for per-sale balance
+    // Owed to dealers overall: all owe entries, minus the payments already made against them.
     const payableTotal = payables.reduce((s, r) => s + num(r.amount), 0);
     const payablePaid = pays.filter((p) => p.payable_id).reduce((s, p) => s + num(p.amount), 0);
     /* purchases still owing (cash + bank + payments haven't covered the total) */
@@ -71,6 +81,7 @@ async function loadDashboard() {
       return s + (bal > 0.009 ? bal : 0);
     }, 0);
 
+    // Assemble the summary cards shown at the top (Adjustment appears only when there is one).
     const cards = [
       { label: "Total sale", value: money(totalSale), tone: "brand", sub: rangeLabel() },
       { label: "Cash", value: money(cash), tone: "green" },
@@ -87,6 +98,7 @@ async function loadDashboard() {
       { label: "To receive (total)", value: money(recv), tone: "red", sub: `${recvCount} sale${recvCount === 1 ? "" : "s"} still to pay` },
       { label: "To pay (total)", value: money(payableTotal - payablePaid + purchaseOwed), tone: "amber", sub: "To dealers & suppliers" }
     );
+    // Turn the cards into HTML and draw them.
     $("#dash-cards").innerHTML = cards
       .map(
         (c) => `<div class="stat tone-${c.tone}">
@@ -100,7 +112,7 @@ async function loadDashboard() {
     /* source split */
     const src = { office: 0, dealer: 0, salesman: 0, reference: 0 };
     for (const r of sales) src[r.source] = (src[r.source] || 0) + num(r.total_amount);
-    const max = Math.max(...Object.values(src), 1);
+    const max = Math.max(...Object.values(src), 1); // ... the 1 keeps the bars at 0% when a source has no sales
     $("#source-split").innerHTML = ["office", "dealer", "salesman", "reference"]
       .map(
         (k) => `<div class="src-row" data-src="${k}">
@@ -112,7 +124,7 @@ async function loadDashboard() {
 
     /* recent */
     const recent = [...sales]
-      .sort((a, b) => (b.sale_date || "").localeCompare(a.sale_date || ""))
+      .sort((a, b) => (b.sale_date || "").localeCompare(a.sale_date || "")) // ... newest first (plain string compare on YYYY-MM-DD dates)
       .slice(0, 5);
     $("#recent-sales").innerHTML = recent.length
       ? recent
@@ -125,6 +137,7 @@ async function loadDashboard() {
           .join("")
       : `<div class="empty">No sales in this period.</div>`;
 
+    // Clicking a recent sale switches to the Sales tab and opens that sale's detail.
     $$("#recent-sales .mini-row").forEach((el) =>
       el.addEventListener("click", () => { switchView("sales"); setTimeout(() => openSaleDetail(el.dataset.sale), 250); })
     );
@@ -133,6 +146,7 @@ async function loadDashboard() {
   }
 }
 
+// Human-readable name of the current range, shown under the Total sale card.
 function rangeLabel() {
   if (state.range === "month") return "This month";
   if (state.range === "year") return "This year";

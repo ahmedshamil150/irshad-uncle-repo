@@ -8,13 +8,17 @@
    ============================================================ */
 
 /* ============ events ============ */
+
+/* Attaches every listener; the groups below are labelled by screen/feature. */
 function bindEvents() {
+  /* login screen + logout button */
   $("#login-form").addEventListener("submit", login);
   $("#logout-btn").addEventListener("click", async () => {
     await sb.auth.signOut();
     toast("Signed out");
   });
 
+  /* top tabs and the bottom nav both switch screens */
   $$(".tab, .bnav").forEach((b) =>
     b.addEventListener("click", () => switchView(b.dataset.view))
   );
@@ -35,6 +39,7 @@ function bindEvents() {
       loadDashboard().catch((e) => toast(e.message, true));
     })
   );
+  /* custom from/to dates reload the dashboard straight away */
   $("#range-from").addEventListener("change", (e) => { state.from = e.target.value; loadDashboard().catch((x) => toast(x.message, true)); });
   $("#range-to").addEventListener("change", (e) => { state.to = e.target.value; loadDashboard().catch((x) => toast(x.message, true)); });
 
@@ -61,6 +66,7 @@ function bindEvents() {
     panel.hidden = !panel.hidden;
     $("#sales-filter-btn").setAttribute("aria-expanded", String(!panel.hidden));
   });
+  /* helper: one ⚙ filter input writes into state.f and re-renders the sales list */
   const bindFilter = (id, key, ev) => {
     $("#" + id).addEventListener(ev, (e) => {
       state.f[key] = e.target.value;
@@ -80,11 +86,13 @@ function bindEvents() {
   bindFilter("sf-min", "min", "input");
   bindFilter("sf-max", "max", "input");
 
+  /* quick-range buttons inside the sales ⚙ panel */
   $("#sf-quick").addEventListener("click", (e) => {
     const b = e.target.closest(".seg");
     if (b) applyQuickRange(b.dataset.range);
   });
 
+  /* reset every sales filter + the search box */
   $("#sales-filter-clear").addEventListener("click", () => {
     state.f = { source: "", salesman: "", kind: "", status: "", from: "", to: "", min: "", max: "", quick: "all" };
     state.search = "";
@@ -145,7 +153,7 @@ function bindEvents() {
 
   /* money fields: focus selects everything, blur turns 5l into 500000 */
   document.addEventListener("focusin", (e) => {
-    if (e.target.matches?.(".amt")) e.target.select();
+    if (e.target.matches?.(".amt")) e.target.select();   /* select-all so typing replaces the old amount */
   });
   document.addEventListener("focusout", (e) => {
     const el = e.target;
@@ -153,7 +161,7 @@ function bindEvents() {
     const raw = el.value.trim();
     if (!raw) return;
     const n = parseAmount(raw);
-    if (Number.isNaN(n)) return toast(AMOUNT_HINT, true);
+    if (Number.isNaN(n)) return toast(AMOUNT_HINT, true);   /* not a number → warn, leave the text as typed */
     el.value = String(n);
   });
 
@@ -232,11 +240,13 @@ function bindEvents() {
   /* ⚙ Filters panels on the other tabs — sales wires its own above */
   Object.keys(LIST_TABS).forEach((tab) => {
     const cfg = LIST_TABS[tab], p = cfg.prefix;
+    /* ⚙ button shows/hides this tab's filter panel */
     $("#" + cfg.btn).addEventListener("click", () => {
       const panel = $("#" + cfg.panel);
       panel.hidden = !panel.hidden;
       $("#" + cfg.btn).setAttribute("aria-expanded", String(!panel.hidden));
     });
+    /* one helper per filter field: write into that tab's filter object and re-render */
     const bind = (key, ev) =>
       $("#" + p + "-" + key).addEventListener(ev, (e) => {
         listF(tab)[key] = e.target.value;
@@ -248,15 +258,18 @@ function bindEvents() {
     ["from", "to"].forEach((key) => ["change", "input"].forEach((ev) => bind(key, ev)));
     bind("min", "input");
     bind("max", "input");
+    /* tab-specific extra filter (only some tabs have one) */
     if (cfg.extra)
       $("#" + p + "-extra").addEventListener("change", (e) => {
         listF(tab).extra = e.target.value;
         cfg.render();
       });
+    /* quick-range buttons for this tab */
     $("#" + p + "-quick").addEventListener("click", (e) => {
       const b = e.target.closest(".seg");
       if (b) listQuickRange(tab, b.dataset.range);
     });
+    /* ⚙ panel clear button for this tab */
     $("#" + cfg.clear).addEventListener("click", () => clearListFilters(tab));
   });
 
@@ -278,4 +291,8 @@ function bindEvents() {
   });
 }
 
+/* ============ start ============ */
+
+/* Everything is bound now — start the app. Must stay as the last line:
+   main.js loads after every other file, so all the functions it calls exist. */
 boot();
