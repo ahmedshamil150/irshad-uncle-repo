@@ -56,6 +56,12 @@ function renderExpenses() {
   /* ... then the shared ⚙ filter panel narrows that result further */
   const shown = applyListFilters("expenses", searched, rows);
 
+  /* what may THIS user do here (see core.js): Edit needs write access,
+     ✕ needs the flow's delete tick, and a plain tap opens the form
+     only when they can actually change something */
+  const canWrite = can("expenses", "write");
+  const canDel = canDelete("expenses");
+
   /* one row per expense, or an empty-state message if nothing matched */
   $("#expense-list").innerHTML = shown.length
     ? shown
@@ -69,10 +75,10 @@ function renderExpenses() {
               <div class="row-amount bal-due">${money(r.amount)}</div>
               <div class="row-bal" style="color:var(--muted)">spent</div>
             </div>
-            <div class="row-actions">
-              <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
-              <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
-            </div>
+            ${canWrite || canDel ? `<div class="row-actions">
+              ${canWrite ? `<button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>` : ""}
+              ${canDel ? `<button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>` : ""}
+            </div>` : ""}
           </div>`
         )
         .join("")
@@ -95,7 +101,7 @@ function renderExpenses() {
           toast("Expense deleted");
           loadExpenses();
         });
-      else openExpenseForm(r);
+      else if (canWrite) openExpenseForm(r);   /* read-only rows don't open the form */
     });
   });
 }

@@ -91,6 +91,12 @@ function renderLoans() {
     const searched = rows.filter((r) => !q || (r.person || "").toLowerCase().includes(q));
     const shown = applyListFilters("loans", searched, rows);
 
+    /* what may THIS user do here (see core.js): Returned/Edit need write
+       access, ✕ needs the flow's delete tick; the detail sheet stays
+       viewable by readers, only its action buttons disappear */
+    const canWrite = can("loans", "write");
+    const canDel = canDelete("loans");
+
     /* build the rows: badges, dates, money left and each row's buttons */
     $("#loan-list").innerHTML = shown.length
       ? shown
@@ -113,13 +119,13 @@ function renderLoans() {
                 : `<div class="row-amount ${r.left > 0.009 ? "bal-due" : ""}">${money(Math.max(r.left, 0))}</div>
                    <div class="row-bal" style="color:var(--muted)">left · ${r.instPaid}/${r.instCount} back</div>`}
             </div>
-            <div class="row-actions">
-              ${isBack
+            ${canWrite || canDel ? `<div class="row-actions">
+              ${canWrite ? (isBack
                 ? `<button type="button" class="btn btn-sm btn-ghost" data-act="undo">↩ Not back yet</button>`
-                : `<button type="button" class="btn btn-sm btn-primary" data-act="back">✓ Returned</button>`}
-              <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
-              <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
-            </div>
+                : `<button type="button" class="btn btn-sm btn-primary" data-act="back">✓ Returned</button>`) : ""}
+              ${canWrite ? `<button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>` : ""}
+              ${canDel ? `<button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>` : ""}
+            </div>` : ""}
           </div>`;
           })
           .join("")
@@ -142,10 +148,10 @@ function renderLoans() {
             toast("Loan deleted");
             loadLoans();
           });
-        /* installment loans open their detail sheet (schedule + returns);
-           plain loans still jump straight to the edit form */
+        /* installment loans open their detail sheet (readers may look);
+           plain loans jump to the edit form — writers only */
         else if (r.instCount > 0) openLoanDetail(r.id);
-        else openLoanForm(r);
+        else if (canWrite) openLoanForm(r);
       });
     });
 }
@@ -345,6 +351,12 @@ async function openLoanDetail(id) {
     /* late = past its "Back by" date or holding an overdue installment, and not yet returned */
     const isLate = !loan.returned_at && ((loan.due_date && loan.due_date < today) || overdueInst);
 
+    /* what may THIS user do with this loan (see core.js): + Record return,
+       the Returned toggle and Edit need write access, Delete and the ✕ on
+       each return need the flow's delete tick */
+    const canWrite = can("loans", "write");
+    const canDel = canDelete("loans");
+
     /* one line per recorded return with a delete button (or a "none yet" note) */
     const paysHtml = pays.length
       ? pays
@@ -353,7 +365,7 @@ async function openLoanDetail(id) {
             <div class="pi-main"><b>${money(p.amount)}</b> <span class="badge badge-${p.method}">${p.method}</span>
               <div class="pi-sub">${fmtDate(p.paid_at)}${p.notes ? " · " + esc(p.notes) : ""}</div>
             </div>
-            <button type="button" class="icon-del" data-delpay="${p.id}" title="Delete return">✕</button>
+            ${canDel ? `<button type="button" class="icon-del" data-delpay="${p.id}" title="Delete return">✕</button>` : ""}
           </div>`
           )
           .join("")
@@ -377,41 +389,45 @@ async function openLoanDetail(id) {
           ${nextDue || left > 0.009 ? "" : `<div class="stat-sub">every installment received</div>`}</div>
       </div>
 
-      <div class="detail-actions">
-        <button type="button" class="btn btn-primary btn-sm" id="loan-detail-return-btn">+ Record return</button>
+      ${canWrite || canDel ? `<div class="detail-actions">
+        ${canWrite ? `<button type="button" class="btn btn-primary btn-sm" id="loan-detail-return-btn">+ Record return</button>
         ${loan.returned_at
           ? `<button type="button" class="btn btn-ghost btn-sm" id="loan-detail-back-btn">↩ Not back yet</button>`
           : `<button type="button" class="btn btn-ghost btn-sm" id="loan-detail-back-btn">✓ Returned</button>`}
-        <button type="button" class="btn btn-ghost btn-sm" id="loan-detail-edit-btn">Edit</button>
-        <button type="button" class="btn btn-danger btn-sm" id="loan-detail-del-btn">Delete</button>
-      </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="loan-detail-edit-btn">Edit</button>` : ""}
+        ${canDel ? `<button type="button" class="btn btn-danger btn-sm" id="loan-detail-del-btn">Delete</button>` : ""}
+      </div>` : ""}
 
       ${inst.length ? `<div class="section-label">Installment schedule</div>${instHtml}` : ""}
       <div class="section-label">Returns received</div>
       ${paysHtml}`;
 
     /* wire the sheet's buttons: record a return, toggle returned, edit, delete */
-    $("#loan-detail-return-btn").onclick = () => {
-      if (left <= 0.009) return toast("The full amount is already back.", true);
-      openPaymentModal("loan", loan.id, `${loan.person} — still to get back ${money(left)}`, left);
-    };
-    $("#loan-detail-back-btn").onclick = async () => {
-      await setLoanReturned(loan, !loan.returned_at);
-      openLoanDetail(loan.id).catch(() => {});
-    };
-    $("#loan-detail-edit-btn").onclick = () => openLoanForm(loan);
-    $("#loan-detail-del-btn").onclick = () =>
-      askConfirm("Delete loan?", `Delete the ${money(loan.amount)} loan to ${loan.person}? Its schedule and returns will also be removed.`, async () => {
-        busy(true);
-        const { error } = await sb.from("personal_loans").delete().eq("id", loan.id);
-        busy(false);
-        if (error) return toast(error.message, true);
-        closeModals();
-        toast("Loan deleted");
-        loadLoans();
-      });
+    if (canWrite) {
+      $("#loan-detail-return-btn").onclick = () => {
+        if (left <= 0.009) return toast("The full amount is already back.", true);
+        openPaymentModal("loan", loan.id, `${loan.person} — still to get back ${money(left)}`, left);
+      };
+      $("#loan-detail-back-btn").onclick = async () => {
+        await setLoanReturned(loan, !loan.returned_at);
+        openLoanDetail(loan.id).catch(() => {});
+      };
+      $("#loan-detail-edit-btn").onclick = () => openLoanForm(loan);
+    }
+    if (canDel)
+      $("#loan-detail-del-btn").onclick = () =>
+        askConfirm("Delete loan?", `Delete the ${money(loan.amount)} loan to ${loan.person}? Its schedule and returns will also be removed.`, async () => {
+          busy(true);
+          const { error } = await sb.from("personal_loans").delete().eq("id", loan.id);
+          busy(false);
+          if (error) return toast(error.message, true);
+          closeModals();
+          toast("Loan deleted");
+          loadLoans();
+        });
     /* the ✕ on each recorded return deletes just that return (after confirmation) */
-    $$("#loan-detail-body [data-delpay]").forEach((b) =>
+    if (canDel)
+      $$("#loan-detail-body [data-delpay]").forEach((b) =>
       b.addEventListener("click", () =>
         askConfirm("Delete return?", "This return will be removed and the amounts updated.", async () => {
           busy(true);

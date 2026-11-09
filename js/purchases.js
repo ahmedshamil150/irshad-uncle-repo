@@ -93,6 +93,12 @@ function renderPurchases() {
   );
   const shown = applyListFilters("purchases", searched, rows);
 
+  // What may THIS user do here (see core.js): + Pay and Edit need write
+  // access, ✕ needs the flow's delete tick, and a plain tap opens the
+  // edit form only when they can actually change something.
+  const canWrite = can("purchases", "write");
+  const canDel = canDelete("purchases");
+
   // One HTML row per purchase: title + status badge, date/supplier/installment
   // progress, amount + balance, then the action buttons (or an empty message).
   $("#purchase-list").innerHTML = shown.length
@@ -107,11 +113,11 @@ function renderPurchases() {
               <div class="row-amount ${r.bal > 0.009 ? "bal-due" : ""}">${money(r.amount)}</div>
               <div class="row-bal" style="color:var(--muted)">${r.bal > 0.009 ? money(r.bal) + " left" : "bought"}</div>
             </div>
-            <div class="row-actions">
-              ${r.bal > 0.009 ? `<button type="button" class="btn btn-sm btn-primary" data-act="pay">+ Pay</button>` : ""}
-              <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
-              <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
-            </div>
+            ${canWrite || canDel ? `<div class="row-actions">
+              ${canWrite && r.bal > 0.009 ? `<button type="button" class="btn btn-sm btn-primary" data-act="pay">+ Pay</button>` : ""}
+              ${canWrite ? `<button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>` : ""}
+              ${canDel ? `<button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>` : ""}
+            </div>` : ""}
           </div>`
         )
         .join("")
@@ -136,7 +142,7 @@ function renderPurchases() {
           toast("Purchase deleted");
           loadPurchases();
         });
-      else openPurchaseForm(r);
+      else if (canWrite) openPurchaseForm(r);   /* read-only rows don't open the form */
     });
   });
 }

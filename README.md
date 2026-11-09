@@ -21,7 +21,8 @@ Works on laptop and phone. Currency: PKR.
 - **To receive** — what customers still owe you, overdue flag, add payments (cash/bank) against a sale. When someone pays everything, tap **✓ Paid all** on their row (or *+ Add payment* inside the sale) — the remaining amount is already filled in, so just pick Cash or Bank and Save. The sale then shows *Paid in full* and drops off this list, and the dashboard totals update.
 - **To pay** — what you owe dealers/suppliers, plus any purchase still owing cash/bank/installments (tagged *Purchase*), and payments against either.
 - **Mobile-first** — built for phones: no page zoom when you tap a field, big tap targets, sticky Save/Cancel above the keyboard, safe-area padding (notch/home-indicator aware), the phone's Back button closes open sheets instead of leaving the app, and a bottom tab bar on small screens. It's also installable to the home screen (Add to Home Screen) with its own icon, opening like a native app.
-- **Login** — single email/password protected by Supabase Row Level Security.
+- **Login** — one email/password per person, protected by Supabase Row Level Security, with **per-flow permissions** the admin hands out (see *Users & access levels* below).
+- **Users & access (admin)** — the admin adds people from the app (**Users** button, top right): email + password creates the login too, then grant access per flow — Dashboard, Sales, To receive, To pay, Loans, Expenses, Purchases, Zakat — as **No access / Read only / Add & edit**, plus a separate **Delete** tick per flow. A read-only person only looks and searches; a writer adds and edits but sees no ✕ unless the delete tick is there; a flow with no access doesn't even show its tab. Row Level Security enforces the same rules in the database, so one person can manage the expenses sheet while seeing nothing else at all.
 
 ## Files
 
@@ -43,13 +44,14 @@ js/                   all app logic — one file per feature (explained in CODE_
   purchases.js          things bought (batch or local)
   zakat.js              zakat given
   payments.js           the shared payment sheet (sale / owe / purchase / loan)
+  users.js              admin sheet: user list + per-flow access grants
   main.js               wires every button to its code, then starts the app (loads last)
 vendor/supabase.js    supabase-js library, served locally (no CDN needed)
 build.js              builds dist/, injects Supabase config from env vars
 package.json          npm scripts (build / start)
 vercel.json           Vercel build command + output directory
 .env.example          template for local environment variables
-supabase/schema.sql   database tables, RLS, login user
+supabase/schema.sql   database tables, RLS, per-flow permissions, admin user functions
 CODE_GUIDE.md         plain-English walkthrough of the code + technologies used
 ```
 
@@ -61,9 +63,16 @@ CODE_GUIDE.md         plain-English walkthrough of the code + technologies used
 2. Paste the entire contents of `supabase/schema.sql` and click **Run**
 3. You should see `Success. No rows returned`
 
-This creates 7 tables (`sales`, `installments`, `payables`, `payments`, `salesmen`, `personal_loans`, `expenses`)
-and enables RLS (only a signed-in user can touch data). It also seeds the salesmen list
+This creates the 12 tables (`sales`, `installments`, `purchase_installments`, `loan_installments`,
+`payables`, `payments`, `salesmen`, `personal_loans`, `expenses`, `purchases`, `zakat`, `app_users`)
+and enables RLS: every read/write/delete is checked against that person's permissions
+(see *Users & access levels* below). It also seeds the salesmen list
 with **Yasir**, **Fazal** and **Usman** (safe to re-run — existing names are skipped).
+
+> **Upgrading an older database?** Just paste and Run the file again — it is idempotent.
+> While the new `app_users` table is empty, every login that already exists is promoted to
+> **admin**, so nothing you have breaks; from then on new logins start with no access until
+> you grant it in the app.
 
 > **Connecting with `psql` instead of the SQL Editor?** Newer Supabase projects publish the
 > direct host (`db.<ref>.supabase.co`) as **IPv6-only**, so on an IPv4-only network you get
@@ -79,11 +88,13 @@ with **Yasir**, **Fazal** and **Usman** (safe to re-run — existing names are s
 > when set as a `password` property in a driver. The app itself is unaffected: it talks to
 > Supabase over HTTPS, which works on IPv4.
 
-**Create the login account — no password is stored in this repository:**
+**Create the first login account — no password is stored in this repository:**
 
 1. Supabase Dashboard → **Authentication → Users** → **Add user**
 2. Enter an email + password of your choice, tick **Auto Confirm**
 3. Log in with those credentials on desktop and phone
+4. That first account becomes the **admin** — after that, add everyone else from the
+   **Users** button inside the app (they get their own password and their own access)
 
 ### 2. Configure environment variables
 
@@ -125,9 +136,43 @@ Manual alternative: `npm run build` then `npx serve dist`
 
 > If you skip step 2 the build fails with a clear error telling you which variables are missing.
 
+## Users & access levels
+
+The admin can give other people their own login and control exactly what each one sees.
+
+1. Log in as the admin → click **Users** (top right) → **+ Add user**
+2. Enter their **email** and a **password** (6+ characters) — this creates their Supabase
+   login too. Leave the password blank only when you already created that login in the
+   Supabase dashboard (then this just grants access to it).
+3. Optionally give them a **name**, and tick **Admin** if they should manage users as well
+4. Under **Access by flow**, choose what each screen gets:
+   - **No access** — the tab is hidden and the database returns nothing for them
+   - **Read only** — they can open the screen, search and filter, but change nothing
+   - **Add & edit** — they can also add and edit entries
+   - **Delete** (the tick beside each flow) — only then does the ✕ / Delete button appear
+5. **Save**. Tap their row later to change anything, or **Remove** to delete them and their login
+
+**Example:** give someone **Expenses → Add & edit** and nothing else. They log in and land
+straight on Expenses, can add and edit expenses, but the ✕ stays hidden — and every other
+tab (and all its data) is invisible to them. The same rules are enforced in the database by
+Row Level Security (`app_can()` in `supabase/schema.sql`), so the hidden buttons are not the
+only guard.
+
+Things worth knowing:
+
+- The **first** account ever created is the admin. Admins see every screen, manage the Users
+  sheet, and are protected from locking themselves out (you can't remove your own admin tick
+  or your own account).
+- **Already using the app?** Re-running `schema.sql` promotes every existing login to admin
+  while `app_users` is empty — your current setup keeps working, then you can dial people's
+  access down one flow at a time.
+- Tabs, *+ New* buttons, row Edit/✕/Pay buttons, dashboard cards and even the sale/loan detail
+  actions all appear and disappear automatically to match each person's access.
+
 ## Security notes
 
 - Credentials live in environment variables (`.env` locally, Vercel dashboard for deploys) — nothing secret is committed to Git.
+- Access is enforced **twice**: the UI hides what a person may not touch, and Supabase Row Level Security (`app_can()` in `supabase/schema.sql`) refuses the same operations in the database — a restricted login cannot read or write other flows even by calling the API directly.
 - The anon key still ends up inside the built `dist/config.js` — that is unavoidable and safe: it only works with RLS enabled, so it can't bypass the login.
 - The **service_role key** must never be put in these env vars or in any frontend code. If it was shared anywhere, rotate it: **Settings → API → Rotate service_role key**.
 - To change the password: reset it in **Authentication → Users**. Login credentials are never stored in this repository.
@@ -138,7 +183,10 @@ Manual alternative: `npm run build` then `npx serve dist`
 | --- | --- | --- |
 | Blank page, console: `Failed to fetch` from a CDN | Old version loaded the library from `esm.sh` | Pull latest code — the library is now bundled locally in `vendor/` |
 | Page shows "Configuration missing" | Project root was served instead of `dist/` | Run `npm start` (never `npx serve .`) |
-| Login says "Invalid email or password" | Login user not created yet, or wrong password | Add the user in Supabase → Authentication → Users (Auto Confirm) |
+| Login says "Invalid email or password" | Login user not created yet, or wrong password | Add the user in Supabase → Authentication → Users (Auto Confirm), or let the admin add them from the **Users** button |
+| Toast: "Permissions not active yet — run the new schema.sql" | The users/access feature is newer than your database | Paste `supabase/schema.sql` into the SQL Editor and Run again (safe to re-run) |
+| Someone logs in but every tab is hidden / "ask the admin to grant it" | Their account has no access yet | Admin → **Users** → tap their row → set the flows → Save |
+| The **Users** button is missing | Signed in with a non-admin account (or schema not re-run) | Use the admin login, or tick **Admin** for your account in the Users sheet |
 | Vercel build fails: "SUPABASE_URL must be set" | Env vars missing in Vercel | Settings → Environment Variables → add both |
 | Port 3000 already in use | Another server is running | Close it, or use `npx serve dist -l 3001` |
 

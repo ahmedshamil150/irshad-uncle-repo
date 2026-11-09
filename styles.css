@@ -1,5 +1,17 @@
-/* ===== Irshad Finance — mobile-first ===== */
+/* ============================================================
+   styles.css — every pixel in the app (mobile-first, no framework)
+   -----------------------------------------------------------
+   Layout of the file: variables → generic pieces (buttons, fields,
+   forms) → app shell (header, tabs, bottom nav) → cards, filters,
+   lists → modals/toasts → responsive tweaks at the bottom.
+   Sections are marked with "=====" headers — jump between them
+   with Ctrl+F. Any color/spacing token lives in :root below.
+   ============================================================ */
 :root {
+  /* the palette: every rule uses these variables, so a theme change
+     starts here — background / card / text / borders first, then the
+     brand blue and the status colors (green = ok, red = due, ...), */
+
   --bg: #f4f6fb;
   --card: #ffffff;
   --ink: #16213e;
@@ -32,10 +44,14 @@ body {
   -webkit-text-size-adjust: 100%;
   overscroll-behavior-y: none;
 }
+/* [hidden] must always win: several screens toggle the attribute on
+   elements that are also display:flex in a rule further down. */
 [hidden] { display: none !important; }
 h1, h2, h3 { margin: 0; }
 
 /* ===== Buttons ===== */
+/* One .btn base + modifiers: -primary (solid blue), -danger (red),
+   -ghost (outline), -block (full width), -sm (compact row size). */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   border: 1px solid transparent; border-radius: 8px;
@@ -51,6 +67,8 @@ h1, h2, h3 { margin: 0; }
 .btn:active { filter: brightness(.93); }
 
 /* ===== Login ===== */
+/* The full-viewport centred card shown before a session exists;
+   100dvh so mobile browser chrome doesn't push it off-screen. */
 .login-screen {
   min-height: 100vh; min-height: 100dvh;
   display: flex; align-items: center; justify-content: center;
@@ -65,6 +83,8 @@ h1, h2, h3 { margin: 0; }
 .login-sub { color: var(--ink); font-weight: 600; margin: 6px 0 20px; font-size: 15px; }
 
 /* ===== Fields ===== */
+/* .field = label-above-input wrapper; .input-row pairs an input with a
+   button on one line; :focus gives every input the same blue ring. */
 .field { display: block; margin-bottom: 14px; }
 .field > span { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
 .input, .field input, .field select, .field textarea {
@@ -155,6 +175,8 @@ h1, h2, h3 { margin: 0; }
 .form-error:empty { display: none; }
 
 /* ===== App shell ===== */
+/* Sticky brand header on top, one .view screen in the middle
+   (navigation.js unhides the active one), bottom nav fixed below. */
 .app { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
 .app-header {
   position: sticky; top: 0; z-index: 30;
@@ -238,11 +260,15 @@ h1, h2, h3 { margin: 0; }
 .src-row[data-src="reference"] .src-fill { background: var(--amber); }
 
 /* ===== Toolbar ===== */
+/* Search box + "+ New ..." buttons above every list; the input takes
+   the free space, selects get a sensible minimum width. */
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
 .toolbar .input { flex: 1; min-width: 130px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 15px; background: #fff; }
 .toolbar select.input { flex: 0 1 auto; min-width: 120px; }
 
 /* ===== Sales filters panel ===== */
+/* The collapsible ⚙ panel: grid of fields, quick-range segments, and
+   the footer row (match count on the left, Clear on the right). */
 .btn.is-on { background: var(--brand-soft, #e8effd); border-color: var(--brand); color: var(--brand); }
 .chip-count {
   display: inline-block; min-width: 18px; padding: 1px 5px; margin-left: 4px;
@@ -275,6 +301,10 @@ h1, h2, h3 { margin: 0; }
 .list-info b { color: var(--ink); }
 
 /* ===== Lists ===== */
+/* Shared by every screen's rows: .row-main (title + sub line) on the
+   left, .row-right (amount + balance) on the right, .row-actions
+   wraps to its own line when Edit/✕ buttons are present. Badges are
+   small uppercase pills colored by status. */
 .list { display: flex; flex-direction: column; gap: 9px; }
 .row {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
@@ -320,6 +350,9 @@ h1, h2, h3 { margin: 0; }
 .mini-row b { font-weight: 700; white-space: nowrap; }
 
 /* ===== Modal ===== */
+/* Every popup: a dimmed full-screen backdrop (.modal) with a card
+   anchored to the bottom on phones / centered on desktop. openModal()
+   removes [hidden]; sizes: default, -sm (confirm), -lg (sale form). */
 .modal {
   position: fixed; inset: 0; z-index: 60;
   background: rgba(15, 23, 42, .55);
@@ -342,6 +375,8 @@ h1, h2, h3 { margin: 0; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 6px; }
 .confirm-text { color: var(--muted); margin: 0 0 16px; }
 
+/* Two/three-column field grids inside forms, the blue "paid so far"
+   summary line, and the dashed installment block on the sale form */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 12px; }
 .grid-2 > *, .grid-3 > *, .detail-grid > * { min-width: 0; }
@@ -355,7 +390,9 @@ h1, h2, h3 { margin: 0; }
 .inst-preview .inst-line:last-child { border-bottom: 0; font-weight: 800; color: var(--ink); }
 .pay-context { background: var(--brand-soft); color: var(--brand); border-radius: 9px; padding: 10px 12px; font-weight: 700; margin: 0 0 14px; font-size: 14px; }
 
-/* Detail view */
+/* Detail view (sale / loan sheets): stat grid, action buttons row,
+   uppercase section headers, and one .pay-item line per payment
+   (with the ✕ delete button only when the user may delete) */
 .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; margin-bottom: 14px; }
 .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
 .section-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 16px 0 8px; }
@@ -364,6 +401,8 @@ h1, h2, h3 { margin: 0; }
 .pay-item .pi-sub { font-size: 12px; color: var(--muted); }
 .icon-del { border: 0; background: var(--red-soft); color: var(--red); border-radius: 7px; width: 28px; height: 28px; cursor: pointer; font-size: 13px; flex-shrink: 0; }
 
+/* Installment rows inside the detail sheets — red when overdue,
+   green when already paid */
 .inst-row { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 9px; margin-bottom: 6px; font-size: 14px; background: #f8fafc; }
 .inst-row.is-overdue { background: var(--red-soft); }
 .inst-row.is-paid { background: var(--green-soft); }
@@ -371,7 +410,41 @@ h1, h2, h3 { margin: 0; }
 .inst-due { flex: 1; color: var(--muted); font-size: 13px; }
 .inst-amt { font-weight: 700; }
 
+/* ===== Users & access (admin sheet) ===== */
+/* Small grey note shown above a form or list */
+.hint { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
+/* "+ Add user" sits above the list with a little breathing room */
+#user-add-btn { margin-bottom: 12px; }
+/* Section heading over the per-flow permission rows */
+.flow-perms-title {
+  font-size: 12px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--muted); margin: 16px 0 8px;
+}
+/* One row per flow: name · access dropdown · delete tick */
+.flow-perms { display: flex; flex-direction: column; gap: 7px; }
+.flow-row {
+  display: flex; align-items: center; gap: 10px;
+  background: #f8fafc; border: 1px solid var(--line);
+  border-radius: 9px; padding: 8px 10px;
+}
+.flow-name { flex: 1; font-weight: 700; font-size: 14px; }
+.flow-access {
+  border: 1px solid var(--line); border-radius: 7px; background: #fff;
+  padding: 6px 8px; font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.flow-del {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 700; color: var(--muted); cursor: pointer;
+}
+.flow-del input { width: 16px; height: 16px; accent-color: var(--red); }
+/* Greyed out while the person is an admin (admins bypass every flow check) */
+.flow-access:disabled, .flow-del input:disabled { opacity: .5; cursor: not-allowed; }
+/* Remove is parked on the far left, away from Back / Save */
+.modal-actions .btn-danger { margin-right: auto; }
+
 /* ===== Toast / busy ===== */
+/* The bottom-of-screen message bubble (.warn = red) and the full-screen
+   loading veil — busy(true)/busy(false) in core.js toggle them. */
 .toast {
   position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   z-index: 90; background: #101828; color: #fff; padding: 11px 18px;

@@ -188,7 +188,12 @@ create trigger trg_sales_updated_at
   for each row execute function public.set_updated_at();
 
 -- ============ ROW LEVEL SECURITY ============
--- App is single-user: only the logged-in account can read/write anything.
+-- Multi-user: logging in is Supabase Auth, and WHAT a user may do is decided
+-- by the permissions the admin gave them (stored in app_users.perms, checked
+-- through public.app_can() which is defined in the next section):
+--   select            -> app_can('<table>', 'read')
+--   insert / update   -> app_can('<table>', 'write')
+--   delete            -> app_can('<table>', 'delete')   (per-flow "can delete" tick)
 
 alter table public.sales           enable row level security;
 alter table public.installments    enable row level security;
@@ -202,29 +207,229 @@ alter table public.expenses       enable row level security;
 alter table public.purchases      enable row level security;
 alter table public.zakat          enable row level security;
 
-drop policy if exists "auth all" on public.sales;
-drop policy if exists "auth all" on public.installments;
-drop policy if exists "auth all" on public.purchase_installments;
-drop policy if exists "auth all" on public.loan_installments;
-drop policy if exists "auth all" on public.payables;
-drop policy if exists "auth all" on public.payments;
-drop policy if exists "auth all" on public.salesmen;
-drop policy if exists "auth all" on public.personal_loans;
-drop policy if exists "auth all" on public.expenses;
-drop policy if exists "auth all" on public.purchases;
-drop policy if exists "auth all" on public.zakat;
+-- The policies below are (re)built for every table in this list — one read,
+-- one insert, one update and one delete policy each. Re-running is safe:
+-- every policy is dropped first.
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'sales','installments','purchase_installments','loan_installments','payables',
+    'payments','salesmen','personal_loans','expenses','purchases','zakat'
+  ] loop
+    execute format('drop policy if exists "auth all"    on public.%I', t);
+    execute format('drop policy if exists "flow select" on public.%I', t);
+    execute format('drop policy if exists "flow insert" on public.%I', t);
+    execute format('drop policy if exists "flow update" on public.%I', t);
+    execute format('drop policy if exists "flow delete" on public.%I', t);
+    execute format('create policy "flow select" on public.%I for select  to authenticated using      (public.app_can(%L, ''read''))',  t, t);
+    execute format('create policy "flow insert" on public.%I for insert to authenticated with check (public.app_can(%L, ''write''))', t, t);
+    execute format('create policy "flow update" on public.%I for update to authenticated using      (public.app_can(%L, ''write'')) with check (public.app_can(%L, ''write''))', t, t, t);
+    execute format('create policy "flow delete" on public.%I for delete to authenticated using      (public.app_can(%L, ''delete''))', t, t);
+  end loop;
+end $$;
 
-create policy "auth all" on public.sales          for all to authenticated using (true) with check (true);
-create policy "auth all" on public.installments   for all to authenticated using (true) with check (true);
-create policy "auth all" on public.purchase_installments for all to authenticated using (true) with check (true);
-create policy "auth all" on public.loan_installments     for all to authenticated using (true) with check (true);
-create policy "auth all" on public.payables       for all to authenticated using (true) with check (true);
-create policy "auth all" on public.payments       for all to authenticated using (true) with check (true);
-create policy "auth all" on public.salesmen       for all to authenticated using (true) with check (true);
-create policy "auth all" on public.personal_loans for all to authenticated using (true) with check (true);
-create policy "auth all" on public.expenses       for all to authenticated using (true) with check (true);
-create policy "auth all" on public.purchases      for all to authenticated using (true) with check (true);
-create policy "auth all" on public.zakat          for all to authenticated using (true) with check (true);
+-- ============ USERS & ACCESS (admin adds people, gives per-flow access) ============
+
+-- One row per person who may use the app. perms is a small JSON document:
+--   {"flows": {"expenses": {"access": "write", "delete": false}, ...}}
+-- access = "none" (can't even see the tab) | "read" (look, search, filter)
+--        | "write" (add + edit)     delete = may remove entries in that flow
+-- is_admin = the boss: sees every screen and manages the Users screen.
+create table if not exists public.app_users (
+  id         uuid primary key references auth.users(id) on delete cascade,
+  email      text not null,
+  name       text,
+  is_admin   boolean not null default false,
+  perms      jsonb not null default '{"flows":{}}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.app_users enable row level security;
+
+-- SECURITY DEFINER helpers: they read app_users as the table owner, which is
+-- what keeps policies from recursing into themselves (policy -> function ->
+-- policy ...). auth.uid() is just the signed-in user's id.
+create or replace function public.app_is_admin()
+returns boolean language sql stable security definer set search_path = public, auth as $$
+  select coalesce((select a.is_admin from public.app_users a where a.id = auth.uid()), false);
+$$;
+
+-- The permission matrix: which flows (screens) may touch which tables.
+--   tbl / need        -> the flows whose permission is checked
+--   read  accepts     -> access = "read" or "write"
+--   write accepts     -> access = "write"
+--   delete accepts    -> access = "read"/"write" AND the flow's "delete" tick
+create or replace function public.app_can(tbl text, need text)
+returns boolean language plpgsql stable security definer set search_path = public, auth as $$
+declare
+  v_perms jsonb;
+  f text;
+  v_flows text[];
+begin
+  if public.app_is_admin() then return true; end if;          -- admin can do everything
+  select a.perms into v_perms from public.app_users a where a.id = auth.uid();
+  if v_perms is null then return false; end if;               -- unknown account = no access
+  v_flows := case tbl
+    when 'sales'                 then (case when need = 'read' then array['sales','receivables'] else array['sales'] end)
+    when 'installments'          then (case when need = 'read' then array['sales','receivables'] else array['sales'] end)
+    when 'salesmen'              then array['sales']
+    when 'payments'              then array['sales','receivables','payables','purchases','loans']
+    when 'payables'              then array['payables']
+    when 'purchases'             then (case when need = 'read' then array['purchases','payables'] else array['purchases'] end)
+    when 'purchase_installments' then (case when need = 'read' then array['purchases','payables'] else array['purchases'] end)
+    when 'personal_loans'        then array['loans']
+    when 'loan_installments'     then array['loans']
+    when 'expenses'              then array['expenses']
+    when 'zakat'                 then array['zakat']
+    else array[]::text[]
+  end;
+  foreach f in array v_flows loop
+    if need = 'delete' then
+      -- delete = the flow's "delete" tick AND at least read access to it
+      if coalesce(v_perms #>> array['flows', f, 'access'], 'none') <> 'none'
+         and coalesce((v_perms #>> array['flows', f, 'delete'])::boolean, false)
+      then return true; end if;
+    else
+      if (v_perms #>> array['flows', f, 'access']) = need then return true; end if;
+      if need = 'read' and (v_perms #>> array['flows', f, 'access']) = 'write' then return true; end if;
+    end if;
+  end loop;
+  return false;
+end $$;
+
+-- app_users' own policies: everyone reads THEMSELVES (the app loads its own
+-- permissions after login), the admin reads/edits EVERYONE.
+drop policy if exists "read self or admin" on public.app_users;
+drop policy if exists "admin insert"       on public.app_users;
+drop policy if exists "admin update"       on public.app_users;
+drop policy if exists "admin delete"       on public.app_users;
+create policy "read self or admin" on public.app_users for select to authenticated
+  using (id = auth.uid() or public.app_is_admin());
+create policy "admin insert" on public.app_users for insert to authenticated
+  with check (public.app_is_admin());
+create policy "admin update" on public.app_users for update to authenticated
+  using (public.app_is_admin()) with check (public.app_is_admin());
+create policy "admin delete" on public.app_users for delete to authenticated
+  using (public.app_is_admin());
+
+-- Anyone who could already sign in before this feature existed keeps full
+-- access (they were the single user until now). Runs only while app_users is
+-- empty, so later accounts are never promoted by re-running this file.
+do $$
+begin
+  if not exists (select 1 from public.app_users) then
+    insert into public.app_users (id, email, is_admin)
+    select u.id, u.email, true from auth.users u;
+  end if;
+end $$;
+
+-- Every new Supabase Auth user automatically gets an app_users row:
+-- the very first one becomes the admin, everyone after starts with no access
+-- until the admin grants it in the app.
+create or replace function public.handle_new_app_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.app_users (id, email, is_admin)
+  values (new.id, lower(new.email), not exists (select 1 from public.app_users))
+  on conflict (id) do nothing;
+  return new;
+end $$;
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_app_user();
+
+-- ---- admin helper functions (called from the app with sb.rpc(...)) ----
+
+-- Every user + every login, for the admin's Users screen.
+create or replace function public.admin_list_users()
+returns jsonb language plpgsql stable security definer set search_path = public, auth as $$
+declare v jsonb;
+begin
+  if not public.app_is_admin() then raise exception 'Admins only.'; end if;
+  with rows as (
+    select a.id, a.email, a.name, a.is_admin, a.perms, a.created_at
+      from public.app_users a
+    union all
+    -- logins created straight in the Supabase dashboard that have no access row yet
+    select u.id, u.email, null, false, null, u.created_at
+      from auth.users u where not exists (select 1 from public.app_users a where a.id = u.id)
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', r.id, 'email', r.email, 'name', r.name,
+           'is_admin', r.is_admin, 'perms', r.perms) order by r.created_at), '[]'::jsonb)
+    into v from rows r;
+  return v;
+end $$;
+
+-- Add a person: creates the Supabase Auth login (email + password, confirmed
+-- straight away) and applies the permissions chosen in the Users screen.
+create or replace function public.admin_add_user(p_email text, p_password text, p_name text default null, p_perms jsonb default null)
+returns jsonb language plpgsql security definer set search_path = public, auth, extensions as $$
+declare
+  v_uid uuid;
+  v_email text := lower(trim(coalesce(p_email, '')));
+begin
+  if not public.app_is_admin() then raise exception 'Admins only.'; end if;
+  if position('@' in v_email) = 0 then raise exception 'Enter a valid email address.'; end if;
+  if coalesce(p_password, '') = '' or length(p_password) < 6 then raise exception 'Password must be at least 6 characters.'; end if;
+  if exists (select 1 from auth.users u where lower(u.email) = v_email) then
+    raise exception 'That email already has a login - use Add with password left blank instead.';
+  end if;
+  v_uid := gen_random_uuid();
+  -- same columns GoTrue writes on a normal sign-up; email_confirmed_at makes
+  -- the password usable immediately (no confirmation email needed)
+  insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
+                          email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+                          created_at, updated_at)
+  values ('00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated',
+          v_email, crypt(p_password, gen_salt('bf')), now(),
+          '{"provider":"email","providers":["email"]}'::jsonb,
+          jsonb_build_object('name', coalesce(p_name, '')), now(), now());
+  -- the trigger above created the app_users row; now give it the chosen name/permissions
+  update public.app_users
+     set name = coalesce(p_name, name), perms = coalesce(p_perms, perms)
+   where id = v_uid;
+  return (select jsonb_build_object('id', a.id, 'email', a.email) from public.app_users a where a.id = v_uid);
+end $$;
+
+-- Give access to a login that already exists (created in the Supabase dashboard).
+create or replace function public.admin_grant_user(p_email text, p_name text default null, p_perms jsonb default null)
+returns jsonb language plpgsql security definer set search_path = public, auth as $$
+declare
+  v_uid uuid;
+  v_email text := lower(trim(coalesce(p_email, '')));
+begin
+  if not public.app_is_admin() then raise exception 'Admins only.'; end if;
+  select u.id into v_uid from auth.users u where lower(u.email) = v_email;
+  if v_uid is null then
+    raise exception 'No login exists for that email - create it in the Supabase dashboard (Authentication -> Users -> Add user, tick Auto Confirm), then add it here again.';
+  end if;
+  insert into public.app_users (id, email, name, is_admin, perms)
+  values (v_uid, v_email, coalesce(p_name, null), false, coalesce(p_perms, '{"flows":{}}'::jsonb))
+  on conflict (id) do update
+    set name = coalesce(excluded.name, public.app_users.name),
+        perms = coalesce(excluded.perms, public.app_users.perms),
+        email = excluded.email;
+  return (select jsonb_build_object('id', a.id, 'email', a.email) from public.app_users a where a.id = v_uid);
+end $$;
+
+-- Remove a person completely (kills the login too). Not for yourself.
+create or replace function public.admin_delete_user(p_id uuid)
+returns void language plpgsql security definer set search_path = public, auth as $$
+begin
+  if not public.app_is_admin() then raise exception 'Admins only.'; end if;
+  if p_id = auth.uid() then raise exception 'You cannot remove your own account.'; end if;
+  delete from auth.users where id = p_id;   -- app_users follows via on delete cascade
+  if not found then delete from public.app_users where id = p_id; end if;
+end $$;
+
+grant execute on function public.app_is_admin()                    to authenticated;
+grant execute on function public.app_can(text, text)               to authenticated;
+grant execute on function public.admin_list_users()                to authenticated;
+grant execute on function public.admin_add_user(text, text, text, jsonb) to authenticated;
+grant execute on function public.admin_grant_user(text, text, jsonb)     to authenticated;
+grant execute on function public.admin_delete_user(uuid)           to authenticated;
 
 -- ============ SEED: SALESMEN ============
 -- Safe to re-run (skips names that already exist).

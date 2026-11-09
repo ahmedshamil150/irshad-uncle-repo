@@ -63,10 +63,23 @@ function renderPayables() {
   );
   const rows = applyListFilters("payables", searched, all);
 
+  // What may THIS user do here (see core.js). This screen mixes two kinds of
+  // rows, each owned by its own flow: owe entries belong to payables, rows
+  // marked "Purchase" belong to purchases — so Edit/✕ check the row's flow,
+  // while + Pay only needs a flow allowed to record payments.
+  const canWrite = can("payables", "write");
+  const canDel = canDelete("payables");
+  const canBuyWrite = can("purchases", "write");
+  const canBuyDel = canDelete("purchases");
+
   // Render each row: amount, balance left (or "Paid"), and its action buttons.
   $("#payable-list").innerHTML = rows.length
     ? rows
-        .map((r) => `<div class="row" data-id="${r.id}">
+        .map((r) => {
+          const w = r.isPurchase ? canBuyWrite : canWrite;   // may edit this row
+          const d = r.isPurchase ? canBuyDel : canDel;       // may delete this row
+          const pay = canWrite || (r.isPurchase && canBuyWrite);
+          return `<div class="row" data-id="${r.id}">
             <div class="row-main">
               <div class="row-title">${esc(r.party)}${r.isPurchase ? ' <span class="badge badge-partial">Purchase</span>' : ""}</div>
               <div class="row-sub">${fmtDate(r.entry_date)}${r.isPurchase && r.supplier ? " · " + esc(oneLine(r.title)) : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
@@ -75,12 +88,13 @@ function renderPayables() {
               <div class="row-amount">${money(r.amount)}</div>
               <div class="row-bal ${r.bal > 0.009 ? "bal-due" : "bal-ok"}">${r.bal > 0.009 ? money(r.bal) + " left" : "Paid"}</div>
             </div>
-            <div class="row-actions">
-              ${r.bal > 0.009 ? `<button type="button" class="btn btn-sm btn-primary" data-act="pay">+ Pay</button>` : ""}
-              <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
-              <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
-            </div>
-          </div>`)
+            ${w || d || pay ? `<div class="row-actions">
+              ${pay && r.bal > 0.009 ? `<button type="button" class="btn btn-sm btn-primary" data-act="pay">+ Pay</button>` : ""}
+              ${w ? `<button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>` : ""}
+              ${d ? `<button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>` : ""}
+            </div>` : ""}
+          </div>`;
+        })
         .join("")
     : `<div class="empty">${
         all.length === 0 || !listFiltersActive("payables")
@@ -111,10 +125,13 @@ function renderPayables() {
               if (r.isPurchase && state.view === "purchases") loadPurchases();
               loadPayables();
             });
-        // Clicking the row itself (not a button): pay when money is still due, otherwise open the form.
-        else if (r.bal > 0.009) openPaymentModal(target, r.id, `${r.party} — still to pay ${money(r.bal)}`, r.bal);
-        else if (r.isPurchase) openPurchaseForm(r);
-        else openPayableForm(r);
+        // Clicking the row itself (not a button): pay when money is still due
+        // (and this user may record payments), otherwise open the edit form —
+        // writers only; read-only rows simply do nothing.
+        else if (r.bal > 0.009 && (canWrite || (r.isPurchase && canBuyWrite)))
+          openPaymentModal(target, r.id, `${r.party} — still to pay ${money(r.bal)}`, r.bal);
+        else if (r.bal <= 0.009 && (r.isPurchase ? canBuyWrite : canWrite))
+          r.isPurchase ? openPurchaseForm(r) : openPayableForm(r);
       });
     });
 }

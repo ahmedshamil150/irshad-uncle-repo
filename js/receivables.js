@@ -56,6 +56,10 @@ function renderReceivables() {
   const searched = open.filter((r) => !q || (r.customer_name || "").toLowerCase().includes(q));
   const rows = applyListFilters("receivables", searched, open);
 
+  // "Paid all" records a payment, so only writers see it (see core.js);
+  // the row itself always opens the sale sheet, which readers may view.
+  const canPay = can("receivables", "write");
+
   // One row per sale still owed money, with an Overdue badge when an installment was missed.
   $("#receivable-list").innerHTML = rows.length
     ? rows
@@ -71,9 +75,9 @@ function renderReceivables() {
               <div class="row-amount bal-due">${money(r.bal)}</div>
               <div class="row-bal" style="color:var(--muted)">left</div>
             </div>
-            <div class="row-actions">
+            ${canPay ? `<div class="row-actions">
               <button type="button" class="btn btn-sm btn-primary" data-act="pay">✓ Paid all</button>
-            </div>
+            </div>` : ""}
           </div>`)
         .join("")
     : `<div class="empty">${
@@ -86,7 +90,7 @@ function renderReceivables() {
   $$("#receivable-list .row").forEach((el) => {
     const r = rows.find((x) => x.id === el.dataset.id);
     el.addEventListener("click", (e) => {
-      if (e.target.closest('[data-act="pay"]'))
+      if (canPay && e.target.closest('[data-act="pay"]'))
         openPaymentModal("sale", r.id, `${r.customer_name} — still to receive ${money(r.bal)}`, r.bal);
       else openSaleDetail(el.dataset.id);
     });

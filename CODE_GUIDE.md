@@ -12,9 +12,9 @@ way around the whole codebase.
 | --- | --- | --- |
 | Page structure | **HTML5** | `index.html` (every screen and popup is defined here) |
 | Styling | **CSS3** (mobile-first, no framework) | `styles.css` |
-| All app logic | **Plain JavaScript** (vanilla ES2020+, **no framework**, no npm packages) | `js/*.js` (15 files) |
+| All app logic | **Plain JavaScript** (vanilla ES2020+, **no framework**, no npm packages) | `js/*.js` (16 files) |
 | Database + login | **Supabase** = hosted **PostgreSQL** database, auth, and Row Level Security | tables defined in `supabase/schema.sql` |
-| Database language | **SQL** (table definitions, policies, seed data) | `supabase/schema.sql` |
+| Database language | **SQL** (table definitions, per-flow permission rules, policies, admin functions, seed data) | `supabase/schema.sql` |
 | Data access from JS | **supabase-js** library (bundled locally) | `vendor/supabase.js` |
 | Build step | **Node.js** script (copies files, injects config) | `build.js` |
 | Hosting | **Vercel** (builds on push, serves `dist/`) | `vercel.json` |
@@ -39,8 +39,9 @@ app works without any CDN.
                         ▼
         ┌────────────────────────── Supabase ────────────────────────┐
         │  PostgreSQL tables: sales, installments, payments, ...     │
-        │  Auth: email/password login                               │
-        │  RLS: only a signed-in user may read/write anything       │
+        │  Auth: one email/password login per person                │
+        │  RLS: each person may only touch the flows they were      │
+        │       granted (app_can() checks app_users.perms)          │
         └────────────────────────────────────────────────────────────┘
 ```
 
@@ -75,6 +76,7 @@ js/expenses.js       ← expenses screen
 js/purchases.js      ← purchases screen
 js/zakat.js          ← zakat screen
 js/payments.js       ← shared payment sheet
+js/users.js          ← admin sheet: users list + per-flow access grants
 js/main.js           ← wires buttons → functions, then calls boot()  ← MUST BE LAST
 ```
 
@@ -115,18 +117,29 @@ name and instantly know which file owns it.
 - `toast()` / `busy()` — the little message bubble and the loading spinner.
 - `openModal() / closeModals() / askConfirm()` — every popup in the app goes
   through these three.
+- **Permissions**: `FLOW_LIST` (the grantable screens) and `can(flow, need)`,
+  `canDelete(flow)`, `canAny(flows, need)` — the one place the JS asks
+  "is this person allowed to …?" (see section 5).
 
 **`js/navigation.js`** — two things:
 - `state` — **the one shared object** where the app keeps whatever it needs
   between renders: loaded rows (`state.sales`, `state.loanRows`…), search-box
-  text (`state.expSearch`…), active filters (`state.f`, `state.lf`). If you ever
+  text (`state.expSearch`…), active filters (`state.f`, `state.lf`), and
+  `state.me` — the logged-in person's permissions. If you ever
   wonder "where does this screen keep its data?", it's here.
 - `switchView(view)` — hides all `.view` sections, highlights the tab, closes
-  popups, and calls that view's loader (the `loaders` map).
+  popups, and calls that view's loader (the `loaders` map). It first checks
+  `can(view, "read")` and quietly lands on `allowedView()` instead when the
+  person may not open that screen.
+- `applyAccess()` — shows/hides tabs, *+ New* buttons (`WRITE_BTNS`) and the
+  admin **Users** button to match `state.me`. Runs once per login.
 
 **`js/auth.js`** — `boot()` is the entry point (called by `main.js`): it binds
 events, reads the Supabase session, and shows the login screen or the app.
-`handleSession()` flips between the two; `login()` submits the form.
+`handleSession()` flips between the two — it now awaits `loadMe()` (reads the
+person's row from `app_users` into `state.me`, with a full-access fallback when
+the schema hasn't been re-run yet) and then calls `applyAccess()` before drawing
+any screen. `login()` submits the form.
 
 ### The shared engines (used by several screens)
 
@@ -146,6 +159,15 @@ ids.
 purchase and loan (`openPaymentModal(type, id, context, max)` /
 `savePayment`). It writes a row into `payments`; if a loan receives its last
 rupee it also stamps `returned_at` on the loan.
+
+**`js/users.js`** — the admin **Users & access** sheet (two panes: list and
+add/edit form). `openUsers()` loads everyone through the `admin_list_users`
+RPC; the form builds one row per flow from `FLOW_LIST` (access dropdown + a
+delete tick that dashboard never gets); `saveUser()` creates a login with a
+password (`admin_add_user`, or `admin_grant_user` when the password box is
+blank) or updates `app_users` for an existing person; `removeUser()` confirms,
+then calls `admin_delete_user`. All four RPCs live in `supabase/schema.sql`
+and refuse to run for non-admins.
 
 ### The screens (one file per tab)
 
@@ -167,7 +189,52 @@ last** — by then every function it references exists.
 
 ---
 
-## 5. How one action flows through the code (example: saving a sale)
+## 5. Permissions: who can see and do what
+
+Two layers enforce the same rules — hide it in the UI, and refuse it in the database.
+
+**The grant.** The admin hands out access per *flow* (screen) from the Users sheet.
+It is stored as one JSON document per person in `app_users.perms`:
+
+```json
+{ "flows": { "expenses": { "access": "write", "delete": false },
+             "sales":   { "access": "read",  "delete": false } } }
+```
+
+- `access`: `"none"` (tab hidden) · `"read"` (look, search, filter) · `"write"` (add + edit)
+- `delete`: a separate tick — "may remove entries in this flow"
+- `is_admin = true` bypasses everything (admins also manage the Users sheet)
+
+**Layer 1 — the UI (JavaScript).** After login, `auth.js` `loadMe()` reads the row
+into `state.me`, then `applyAccess()` (in `navigation.js`) hides forbidden tabs,
+*+ New* buttons and the Users button. Everywhere else asks the small helpers in
+`core.js`:
+
+| Helper | Used for |
+| --- | --- |
+| `can(flow, "read")` | may this person open the screen / see its data? |
+| `can(flow, "write")` | show *+ New*, Edit, row-tap-opens-form, + Pay… |
+| `canDelete(flow)` | show ✕ / Delete buttons |
+| `canAny([flows], need)` | shared data (e.g. dashboard cards, payments) |
+
+`switchView()` also consults `can()` — a link to a forbidden screen silently
+redirects to `allowedView()` (the first readable flow).
+
+**Layer 2 — the database (SQL).** Every table's RLS policies call
+`public.app_can(table, need)`, which reads `app_users.perms` through the flow
+matrix in `supabase/schema.sql` (e.g. `payments` may be written by sales,
+receivables, payables, purchases or loans). Admins short-circuit to `true`.
+So even a hand-crafted API call cannot read or write a flow the person was
+never granted.
+
+**Changing the rules:** a new screen needs one line in the matrix (its table →
+flows) plus `FLOW_LIST` in `core.js`; a button you want to hide needs a
+`can()`/`canDelete()` check where it is rendered (or an entry in `WRITE_BTNS`
+if it is a toolbar button).
+
+---
+
+## 6. How one action flows through the code (example: saving a sale)
 
 ```
 1. index.html        <form id="sale-form"> … <button>Save</button>
@@ -188,7 +255,7 @@ fresh reads from the database.
 
 ---
 
-## 6. Where do I change …?
+## 7. Where do I change …?
 
 | I want to… | Touch |
 | --- | --- |
@@ -199,10 +266,12 @@ fresh reads from the database.
 | change the database | `supabase/schema.sql` (re-run it in Supabase SQL Editor) |
 | add a filter to the ⚙ panel | `LIST_TABS` in `js/filters.js` (+ the input in `index.html`) |
 | change login/security | `supabase/schema.sql` (RLS policies) + `js/auth.js` |
+| give someone more/less access | the Users sheet in the app (stored in `app_users.perms`) + the flow matrix `app_can()` in `supabase/schema.sql` |
+| hide a button from some users | a `can()`/`canDelete()` check where it is rendered, or `WRITE_BTNS` in `js/navigation.js` for toolbar buttons |
 
 ---
 
-## 7. Build & deploy in one paragraph
+## 8. Build & deploy in one paragraph
 
 `npm run build` runs `build.js`, which deletes `dist/`, copies `index.html`,
 `styles.css`, `manifest.json`, icons, `vendor/` and `js/`, and writes

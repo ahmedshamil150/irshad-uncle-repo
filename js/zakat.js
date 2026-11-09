@@ -46,6 +46,12 @@ function renderZakat() {
   /* ... then the shared ⚙ filter panel narrows that result further */
   const shown = applyListFilters("zakat", searched, rows);
 
+  /* what may THIS user do here (see core.js): Edit needs write access,
+     ✕ needs the flow's delete tick, a plain tap opens the form only
+     when they can actually change something */
+  const canWrite = can("zakat", "write");
+  const canDel = canDelete("zakat");
+
   /* one row per entry, or an empty-state message if nothing matched */
   $("#zakat-list").innerHTML = shown.length
     ? shown
@@ -59,10 +65,10 @@ function renderZakat() {
               <div class="row-amount bal-due">${money(r.amount)}</div>
               <div class="row-bal" style="color:var(--muted)">given</div>
             </div>
-            <div class="row-actions">
-              <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
-              <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
-            </div>
+            ${canWrite || canDel ? `<div class="row-actions">
+              ${canWrite ? `<button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>` : ""}
+              ${canDel ? `<button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>` : ""}
+            </div>` : ""}
           </div>`
         )
         .join("")
@@ -85,7 +91,7 @@ function renderZakat() {
           toast("Zakat entry deleted");
           loadZakat();
         });
-      else openZakatForm(r);
+      else if (canWrite) openZakatForm(r);   /* read-only rows don't open the form */
     });
   });
 }

@@ -57,6 +57,8 @@ function activeFilterCount() {
 /* true when a search term or any filter is set */
 const filtersActive = () => state.search.trim() !== "" || activeFilterCount() > 0;
 
+/* Narrows state.sales by the search box + every ⚙ filter field at once.
+   Returns [] straight away for a backwards date range (nothing can match). */
 function filterSales() {
   const f = state.f;
   const q = state.search.trim().toLowerCase();
@@ -87,6 +89,8 @@ function filterSales() {
   });
 }
 
+/* Redraws the sales list: filter-count badge, "Showing X of Y" summary line,
+   the rows themselves, then wires each row to open its detail sheet. */
 function renderSales() {
   const f = state.f;
   const rows = filterSales();
@@ -184,6 +188,12 @@ async function openSaleDetail(id) {
     const inst = iR.data || [];
     const pays = pR.data || [];
 
+    /* what may THIS user do with this sale (see core.js): + Add payment and
+       Edit need write access, Delete needs the flow's delete tick; a
+       read-only user gets the sheet with no action buttons at all */
+    const canWrite = can("sales", "write");
+    const canDel = canDelete("sales");
+
     const paidAtSale = num(sale.cash_amount) + num(sale.bank_amount) + num(sale.adjustment_amount) + num(sale.loan_amount);
     const received = pays.reduce((s, p) => s + num(p.amount), 0);
     const outstanding = round2(num(sale.total_amount) - paidAtSale - received);
@@ -217,7 +227,7 @@ async function openSaleDetail(id) {
             <div class="pi-main"><b>${money(p.amount)}</b> <span class="badge badge-${p.method}">${p.method}</span>
               <div class="pi-sub">${fmtDate(p.paid_at)}${p.notes ? " · " + esc(p.notes) : ""}</div>
             </div>
-            <button type="button" class="icon-del" data-delpay="${p.id}" title="Delete payment">✕</button>
+            ${canDel ? `<button type="button" class="icon-del" data-delpay="${p.id}" title="Delete payment">✕</button>` : ""}
           </div>`
           )
           .join("")
@@ -240,32 +250,36 @@ async function openSaleDetail(id) {
 
       ${sale.notes ? `<div class="section-label">Notes</div><p class="row-sub" style="margin:0">${esc(sale.notes)}</p>` : ""}
 
-      <div class="detail-actions">
-        <button type="button" class="btn btn-primary btn-sm" id="detail-pay-btn">+ Add payment</button>
-        <button type="button" class="btn btn-ghost btn-sm" id="detail-edit-btn">Edit</button>
-        <button type="button" class="btn btn-danger btn-sm" id="detail-del-btn">Delete</button>
-      </div>
+      ${canWrite || canDel ? `<div class="detail-actions">
+        ${canWrite ? `<button type="button" class="btn btn-primary btn-sm" id="detail-pay-btn">+ Add payment</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="detail-edit-btn">Edit</button>` : ""}
+        ${canDel ? `<button type="button" class="btn btn-danger btn-sm" id="detail-del-btn">Delete</button>` : ""}
+      </div>` : ""}
 
       ${inst.length ? `<div class="section-label">Installment schedule</div>${instHtml}` : ""}
       <div class="section-label">Payments</div>
       ${paysHtml}`;
 
-    $("#detail-pay-btn").onclick = () => {
-      if (outstanding <= 0.009) return toast("This sale is already fully paid.", true);
-      openPaymentModal("sale", sale.id, `${sale.customer_name} — still to receive ${money(outstanding)}`, outstanding);
-    };
-    $("#detail-edit-btn").onclick = () => openSaleForm(sale);
-    $("#detail-del-btn").onclick = () =>
-      askConfirm("Delete sale?", `Delete the sale for ${sale.customer_name} (${money(sale.total_amount)})? Its installments and payments will also be removed.`, async () => {
-        busy(true);
-        const { error } = await sb.from("sales").delete().eq("id", sale.id);
-        busy(false);
-        if (error) return toast(error.message, true);
-        closeModals();
-        toast("Sale deleted");
-        loadSales();
-      });
-    $$("#sale-detail-body [data-delpay]").forEach((b) =>
+    if (canWrite) {
+      $("#detail-pay-btn").onclick = () => {
+        if (outstanding <= 0.009) return toast("This sale is already fully paid.", true);
+        openPaymentModal("sale", sale.id, `${sale.customer_name} — still to receive ${money(outstanding)}`, outstanding);
+      };
+      $("#detail-edit-btn").onclick = () => openSaleForm(sale);
+    }
+    if (canDel)
+      $("#detail-del-btn").onclick = () =>
+        askConfirm("Delete sale?", `Delete the sale for ${sale.customer_name} (${money(sale.total_amount)})? Its installments and payments will also be removed.`, async () => {
+          busy(true);
+          const { error } = await sb.from("sales").delete().eq("id", sale.id);
+          busy(false);
+          if (error) return toast(error.message, true);
+          closeModals();
+          toast("Sale deleted");
+          loadSales();
+        });
+    if (canDel)
+      $$("#sale-detail-body [data-delpay]").forEach((b) =>
       b.addEventListener("click", () =>
         askConfirm("Delete payment?", "This payment will be removed and the amounts updated.", async () => {
           busy(true);
@@ -318,7 +332,7 @@ function renderSalesmenList() {
         .map(
           (s) => `<div class="row" data-id="${s.id}">
             <div class="row-main"><div class="row-title">${esc(s.name)}</div></div>
-            <button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>
+            ${canDelete("sales") ? `<button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>` : ""}
           </div>`
         )
         .join("")
@@ -348,6 +362,8 @@ function renderSalesmenList() {
   });
 }
 
+/* Adds one salesman to the saved list (duplicate names get a friendly
+   message instead of the raw database error). */
 async function saveSalesman(e) {
   e.preventDefault();
   const errEl = $("#salesman-form-error");
@@ -372,6 +388,7 @@ async function saveSalesman(e) {
   await loadSalesmen();
 }
 
+/* Opens the salesman manager with a clean Add box and the current list. */
 function openSalesmenModal() {
   $("#salesman-name").value = "";
   $("#salesman-form-error").hidden = true;
@@ -380,6 +397,8 @@ function openSalesmenModal() {
 }
 
 /* ============ sale form ============ */
+/* Opens the sale form — blank for a new sale, or every field filled for an
+   existing one (including its REAL installment schedule, loaded async below). */
 function openSaleForm(sale = null) {
   $("#sale-form").reset();
   $("#sale-form-error").hidden = true;
@@ -429,6 +448,9 @@ function openSaleForm(sale = null) {
   openModal("modal-sale");
 }
 
+/* Live form logic: shows only the field the chosen source needs (dealer /
+   salesman / reference), keeps the "Paid now · Left to pay" line current, and
+   reveals the installment section + its preview when the box is ticked. */
 function syncSaleForm() {
   const src = $("#sale-source").value;
   $("#dealer-field").hidden = src !== "dealer";
@@ -453,6 +475,8 @@ function syncSaleForm() {
   if (inst) renderInstPreview();
 }
 
+/* Splits `financed` into `count` monthly parts starting at `firstDue`.
+   The last row absorbs any rounding leftover so the parts add up exactly. */
 function buildSchedule(financed, count, firstDue) {
   const per = Math.floor((financed / count) * 100) / 100;
   const rows = [];
@@ -466,6 +490,8 @@ function buildSchedule(financed, count, firstDue) {
   return rows;
 }
 
+/* The two-line schedule preview under the installment fields
+   (per-month amount · financed total · first and last due dates). */
 function renderInstPreview() {
   const total = amt($("#sale-total").value);
   const paid = amt($("#sale-cash").value) + amt($("#sale-bank").value) + amt($("#sale-adjustment").value) + amt($("#sale-loan").value);
@@ -484,6 +510,9 @@ function renderInstPreview() {
     <div class="inst-line"><span>First due ${fmtDate(rows[0].due)}</span><span>Last due ${fmtDate(rows[rows.length - 1].due)}</span></div>`;
 }
 
+/* Validates the whole form, writes the sale, then rebuilds its installment
+   schedule from scratch (the form is always the source of truth — see the
+   note by the delete below). */
 async function saveSale(e) {
   e.preventDefault();
   const errEl = $("#sale-form-error");

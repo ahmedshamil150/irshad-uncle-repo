@@ -82,33 +82,46 @@ async function loadDashboard() {
     }, 0);
 
     // Assemble the summary cards shown at the top (Adjustment appears only when there is one).
+    // Every card carries the flow(s) it is built from, so each user only sees
+    // the numbers they are allowed to read (see core.js can / canAny — the
+    // flow lists here mirror the read rules in schema.sql).
     const cards = [
-      { label: "Total sale", value: money(totalSale), tone: "brand", sub: rangeLabel() },
-      { label: "Cash", value: money(cash), tone: "green" },
-      { label: "Bank", value: money(bank), tone: "brand" },
-      ...(adjustment > 0 ? [{ label: "Adjustment", value: money(adjustment), tone: "brand", sub: "Old machines taken in trade" }] : []),
-      { label: "Zakat", value: money(zakatRows.reduce((s, r) => s + num(r.amount), 0)), tone: "violet",
+      { flows: ["sales"], label: "Total sale", value: money(totalSale), tone: "brand", sub: rangeLabel() },
+      { flows: ["sales"], label: "Cash", value: money(cash), tone: "green" },
+      { flows: ["sales"], label: "Bank", value: money(bank), tone: "brand" },
+      ...(adjustment > 0 ? [{ flows: ["sales"], label: "Adjustment", value: money(adjustment), tone: "brand", sub: "Old machines taken in trade" }] : []),
+      { flows: ["zakat"], label: "Zakat", value: money(zakatRows.reduce((s, r) => s + num(r.amount), 0)), tone: "violet",
         sub: `${zakatRows.length} entr${zakatRows.length === 1 ? "y" : "ies"} in this period` },
-      { label: "Purchases", value: money(purchRows.reduce((s, r) => s + num(r.amount), 0)), tone: "amber",
+      { flows: ["purchases"], label: "Purchases", value: money(purchRows.reduce((s, r) => s + num(r.amount), 0)), tone: "amber",
         sub: `${purchRows.length} purchase${purchRows.length === 1 ? "" : "s"} in this period` },
     ];
     /* loan is no longer an option on the sale form — only show it while old sales still carry one */
-    if (loan > 0) cards.push({ label: "Loan", value: money(loan), tone: "violet" });
+    if (loan > 0) cards.push({ flows: ["sales"], label: "Loan", value: money(loan), tone: "violet" });
     cards.push(
-      { label: "To receive (total)", value: money(recv), tone: "red", sub: `${recvCount} sale${recvCount === 1 ? "" : "s"} still to pay` },
-      { label: "To pay (total)", value: money(payableTotal - payablePaid + purchaseOwed), tone: "amber", sub: "To dealers & suppliers" }
+      { flows: ["sales", "receivables"], label: "To receive (total)", value: money(recv), tone: "red", sub: `${recvCount} sale${recvCount === 1 ? "" : "s"} still to pay` },
+      { flows: ["payables", "purchases"], label: "To pay (total)", value: money(payableTotal - payablePaid + purchaseOwed), tone: "amber", sub: "To dealers & suppliers" }
     );
-    // Turn the cards into HTML and draw them.
-    $("#dash-cards").innerHTML = cards
-      .map(
-        (c) => `<div class="stat tone-${c.tone}">
+    // Turn the allowed cards into HTML and draw them (none allowed → say so).
+    const shownCards = cards.filter((c) => canAny(c.flows, "read"));
+    $("#dash-cards").innerHTML = shownCards.length
+      ? shownCards
+          .map(
+            (c) => `<div class="stat tone-${c.tone}">
           <div class="stat-label">${esc(c.label)}</div>
           <div class="stat-value">${c.value}</div>
           ${c.sub ? `<div class="stat-sub">${esc(c.sub)}</div>` : ""}
         </div>`
-      )
-      .join("");
+          )
+          .join("")
+      : '<div class="empty">No data to show — no flows are shared with this account.</div>';
 
+    /* the two widgets below are built from sales only, so they disappear
+       (whole .card) for anyone who may not read sales */
+    const seeSales = can("sales", "read");
+    $("#source-split").closest(".card").hidden = !seeSales;
+    $("#recent-sales").closest(".card").hidden = !seeSales;
+
+    if (seeSales) {
     /* source split */
     const src = { office: 0, dealer: 0, salesman: 0, reference: 0 };
     for (const r of sales) src[r.source] = (src[r.source] || 0) + num(r.total_amount);
@@ -141,6 +154,7 @@ async function loadDashboard() {
     $$("#recent-sales .mini-row").forEach((el) =>
       el.addEventListener("click", () => { switchView("sales"); setTimeout(() => openSaleDetail(el.dataset.sale), 250); })
     );
+    } /* end if (seeSales) */
   } finally {
     busy(false);
   }

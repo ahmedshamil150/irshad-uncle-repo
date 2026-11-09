@@ -5,7 +5,8 @@
    Read this file first when you want to know what a helper does.
    PROVIDES: sb (Supabase client), $ / $$ (DOM lookup), esc, num, round2, money,
      fmtDate, date helpers, parseAmount ("5l" / "50k" / "2million"),
-     oneLine, itemsText, toast, busy, openModal, closeModals, askConfirm
+     oneLine, itemsText, toast, busy, openModal, closeModals, askConfirm,
+     FLOW_LIST, can, canDelete, canAny (per-user access checks)
    ============================================================ */
 
 /* ============ client & helpers ============ */
@@ -160,3 +161,45 @@ function askConfirm(title, text, cb) {
 
 /* item lines are stored newline-joined in title — one line per item, like a sale */
 const oneLine = (s) => String(s || "").replace(/\s*\n\s*/g, " · ");
+
+/* ============ per-flow permissions (what THIS user may see and do) ============
+   The admin hands out access per flow (screen) from the Users modal; auth.js
+   loads the result into state.me right after login:
+
+     state.me = { is_admin, perms: { flows: { <flow>: { access, delete } } } }
+       access : "none" (tab hidden) | "read" (look/search) | "write" (add+edit)
+       delete : true = may remove entries in that flow
+
+   A missing flow counts as "none". An admin — or the pre-multi-user fallback
+   { full: true } used when schema.sql hasn't been re-run — can do everything. */
+
+/* Every grantable screen, in the order the app shows them. The Users modal
+   builds its permission rows from this list (dashboard has no rows to delete,
+   so it never gets a "delete" tick). */
+const FLOW_LIST = ["dashboard", "sales", "receivables", "payables", "loans",
+                   "expenses", "purchases", "zakat"];
+
+/* May this user do `need` ("read" or "write") on `flow`?
+   "read" is satisfied by read OR write access; "write" needs write access. */
+function can(flow, need) {
+  if (!state.me) return false;                       /* not loaded yet → deny */
+  if (state.me.full || state.me.is_admin) return true; /* admin / legacy single user */
+  const access = state.me.perms?.flows?.[flow]?.access || "none";
+  return need === "write" ? access === "write"
+                          : access === "read" || access === "write";
+}
+
+/* May this user remove entries in `flow`? Needs the flow's "delete" tick on
+   top of at least read access (mirrors the `delete` policies in schema.sql).
+   Admins (and the legacy full-access fallback) can delete everything. */
+function canDelete(flow) {
+  if (!can(flow, "read")) return false;
+  if (state.me.full || state.me.is_admin) return true;
+  return !!state.me.perms?.flows?.[flow]?.delete;
+}
+
+/* True when ANY of the listed flows allows `need` — for shared actions such
+   as recording a payment, which several screens are allowed to write. */
+function canAny(flows, need) {
+  return flows.some((f) => can(f, need));
+}

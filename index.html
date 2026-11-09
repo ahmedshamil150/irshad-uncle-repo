@@ -54,6 +54,9 @@
       </div>
       <div class="header-right">
         <span id="header-user" class="header-user"></span>
+        <!-- Admin-only: opens the Users & access sheet (js/users.js);
+             hidden by applyAccess() until an admin is logged in -->
+        <button type="button" id="users-btn" class="btn btn-ghost btn-sm" hidden>Users</button>
         <button type="button" id="logout-btn" class="btn btn-ghost btn-sm">Logout</button>
       </div>
     </header>
@@ -1035,6 +1038,58 @@
     </div>
   </div>
 
+  <!-- Users & access (admin only): grant per-flow permissions.
+       Two panes inside one sheet — the user list, then the add/edit form;
+       js/users.js flips between them and talks to the admin_* RPCs. -->
+  <div id="modal-users" class="modal" hidden>
+    <div class="modal-dialog" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>Users &amp; access</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+
+      <!-- pane 1 — everyone who can log in -->
+      <div class="modal-body users-pane" id="users-list-pane">
+        <p class="hint">Tap a person to change what they can see and do.</p>
+        <button type="button" id="user-add-btn" class="btn btn-primary">+ Add user</button>
+        <div id="user-list" class="list"></div>
+      </div>
+
+      <!-- pane 2 — add a new person (or edit an existing one) -->
+      <form id="user-form" class="modal-body form users-pane" hidden>
+        <input type="hidden" id="u-id" />
+        <label class="field"><span>Email *</span>
+          <!-- readonly while editing: the login itself is managed by Supabase -->
+          <input type="email" id="u-email" required placeholder="name@example.com"
+                 autocomplete="off" />
+        </label>
+        <label class="field"><span id="u-password-label">Password *</span>
+          <input type="text" id="u-password" autocomplete="new-password"
+                 placeholder="At least 6 characters" />
+        </label>
+        <p class="hint" id="u-password-hint">Creates the login too. Leave blank only when
+          the login already exists (created in the Supabase dashboard).</p>
+        <label class="field"><span>Name</span>
+          <input type="text" id="u-name" placeholder="Optional — shown in the list" />
+        </label>
+        <label class="check"><input type="checkbox" id="u-admin" />
+          <span>Admin — sees every screen and can manage users</span></label>
+
+        <!-- one row per flow (screen) is built by js/users.js from FLOW_LIST:
+             access = None / Read / Write, plus a "can delete" tick -->
+        <h3 class="flow-perms-title">Access by flow</h3>
+        <div id="u-flows" class="flow-perms"></div>
+
+        <p id="user-form-error" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-danger" id="u-remove-btn" hidden>Remove</button>
+          <button type="button" class="btn btn-ghost" id="user-back-btn">Back</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Confirm dialog -->
   <div id="modal-confirm" class="modal" hidden>
     <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
@@ -1074,6 +1129,7 @@
   <script src="js/purchases.js"></script>
   <script src="js/zakat.js"></script>
   <script src="js/payments.js"></script>     <!-- shared payment sheet -->
+  <script src="js/users.js"></script>        <!-- admin: users & per-flow access -->
   <script src="js/main.js"></script>         <!-- wires buttons, then boot() -->
 </body>
 </html>

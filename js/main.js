@@ -273,6 +273,15 @@ function bindEvents() {
     $("#" + cfg.clear).addEventListener("click", () => clearListFilters(tab));
   });
 
+  /* users & access sheet (admin only — see js/users.js) */
+  $("#users-btn").addEventListener("click", () => openUsers());
+  $("#user-form").addEventListener("submit", saveUser);
+  $("#user-add-btn").addEventListener("click", () => showUserForm(null));
+  $("#user-back-btn").addEventListener("click", () => showUserPane("list"));
+  $("#u-remove-btn").addEventListener("click", removeUser);
+  /* ticking "Admin" greys out the per-flow rows (admins see everything) */
+  $("#u-admin").addEventListener("change", syncFlowLock);
+
   /* modal close */
   document.addEventListener("click", (e) => {
     if (e.target.matches("[data-close]")) dismissModals();
