@@ -416,14 +416,28 @@ begin
   end if;
   v_uid := gen_random_uuid();
   -- same columns GoTrue writes on a normal sign-up; email_confirmed_at makes
-  -- the password usable immediately (no confirmation email needed)
+  -- the password usable immediately (no confirmation email needed).
+  -- The token columns MUST be '' and not NULL: GoTrue scans them into plain
+  -- Go strings, so a NULL makes every sign-in for that user fail with
+  -- 500 "Database error querying schema".
   insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
                           email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+                          confirmation_token, recovery_token,
+                          email_change_token_new, email_change_token_current, email_change,
                           created_at, updated_at)
   values ('00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated',
           v_email, crypt(p_password, gen_salt('bf')), now(),
           '{"provider":"email","providers":["email"]}'::jsonb,
-          jsonb_build_object('name', coalesce(p_name, '')), now(), now());
+          jsonb_build_object('name', coalesce(p_name, '')),
+          '', '', '', '', '', now(), now());
+  -- and the identity row GoTrue would create (its timestamps must not be
+  -- NULL either - the eager-loaded scan fails on them the same way)
+  insert into auth.identities (id, provider_id, user_id, provider, identity_data,
+                               last_sign_in_at, created_at, updated_at)
+  values (gen_random_uuid(), v_uid::text, v_uid, 'email',
+          jsonb_build_object('sub', v_uid::text, 'email', v_email,
+                             'email_verified', true, 'phone_verified', false),
+          now(), now(), now());
   -- the trigger above created the app_users row; now give it the chosen name/permissions
   update public.app_users
      set name = coalesce(p_name, name), perms = coalesce(p_perms, perms)
