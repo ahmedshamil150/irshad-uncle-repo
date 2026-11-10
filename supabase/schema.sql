@@ -143,6 +143,13 @@ alter table public.sales add column if not exists reference_type text check (ref
 alter table public.sales add column if not exists reference_name text;
 alter table public.sales add column if not exists dealer_name text;
 alter table public.expenses add column if not exists payee text;
+-- Envelope system: a TOP-LEVEL expense is money given out (e.g. "30k to Rauf");
+-- its CHILDREN (parent_id set) are the spends recorded inside that envelope
+-- ("3k milkman"). One level deep only; deleting a card removes its spends.
+alter table public.expenses add column if not exists parent_id uuid references public.expenses(id) on delete cascade;
+-- Who created the row. Non-admins may only edit/delete rows they created;
+-- the admin ignores ownership. Default fills it in on every insert.
+alter table public.expenses add column if not exists created_by uuid default auth.uid();
 alter table public.purchases add column if not exists cash_amount numeric(14,2) not null default 0 check (cash_amount >= 0);
 alter table public.purchases add column if not exists bank_amount numeric(14,2) not null default 0 check (bank_amount >= 0);
 alter table public.payments add column if not exists purchase_id uuid references public.purchases(id) on delete cascade;
@@ -170,6 +177,7 @@ create index if not exists idx_pay_date       on public.payments (paid_at);
 create index if not exists idx_payables_date  on public.payables (entry_date desc);
 create index if not exists idx_loans_date     on public.personal_loans (loan_date desc);
 create index if not exists idx_expenses_date  on public.expenses (entry_date desc);
+create index if not exists idx_expenses_parent on public.expenses (parent_id);
 create index if not exists idx_purchases_date on public.purchases (entry_date desc);
 create index if not exists idx_zakat_date     on public.zakat (entry_date desc);
 
@@ -292,9 +300,19 @@ begin
     execute format('drop policy if exists "flow update" on public.%I', t);
     execute format('drop policy if exists "flow delete" on public.%I', t);
     execute format('create policy "flow select" on public.%I for select  to authenticated using      (public.app_can(%L, ''read''))',  t, t);
-    execute format('create policy "flow insert" on public.%I for insert to authenticated with check (public.app_can(%L, ''write''))', t, t);
-    execute format('create policy "flow update" on public.%I for update to authenticated using      (public.app_can(%L, ''write'')) with check (public.app_can(%L, ''write''))', t, t, t);
-    execute format('create policy "flow delete" on public.%I for delete to authenticated using      (public.app_can(%L, ''delete''))', t, t);
+    if t = 'expenses' then
+      -- Expenses are OWNED rows: besides the flow permission, you may only
+      -- insert/change/remove a row that you created yourself (admins bypass
+      -- ownership). SELECT stays open — everyone with access SEES all rows,
+      -- so the whole team can follow where the money went.
+      execute format('create policy "flow insert" on public.expenses for insert to authenticated with check (public.app_can(''expenses'', ''write'') and (public.app_is_admin() or created_by = auth.uid()))');
+      execute format('create policy "flow update" on public.expenses for update to authenticated using      (public.app_can(''expenses'', ''write'') and (public.app_is_admin() or created_by = auth.uid())) with check (public.app_can(''expenses'', ''write'') and (public.app_is_admin() or created_by = auth.uid()))');
+      execute format('create policy "flow delete" on public.expenses for delete to authenticated using      (public.app_can(''expenses'', ''delete'') and (public.app_is_admin() or created_by = auth.uid()))');
+    else
+      execute format('create policy "flow insert" on public.%I for insert to authenticated with check (public.app_can(%L, ''write''))', t, t);
+      execute format('create policy "flow update" on public.%I for update to authenticated using      (public.app_can(%L, ''write'')) with check (public.app_can(%L, ''write''))', t, t, t);
+      execute format('create policy "flow delete" on public.%I for delete to authenticated using      (public.app_can(%L, ''delete''))', t, t);
+    end if;
   end loop;
 end $$;
 
@@ -325,6 +343,22 @@ begin
   if not exists (select 1 from public.app_users) then
     insert into public.app_users (id, email, is_admin)
     select u.id, u.email, true from auth.users u;
+  end if;
+end $$;
+
+-- Existing expenses predate the ownership column: attribute them to the admin
+-- (or, on a setup with no admin row yet, to the earliest login), then make
+-- created_by mandatory. Guarded so a database with zero users can still run
+-- this file; a later re-run finishes the job once people exist.
+update public.expenses e
+   set created_by = coalesce(
+         (select a.id from public.app_users a where a.is_admin order by a.created_at limit 1),
+         (select u.id from auth.users u order by u.created_at limit 1))
+ where e.created_by is null;
+do $$
+begin
+  if not exists (select 1 from public.expenses where created_by is null) then
+    alter table public.expenses alter column created_by set not null;
   end if;
 end $$;
 

@@ -178,7 +178,7 @@ and refuse to run for non-admins.
 | `receivables.js` | To receive | Joins unpaid sale installments with their payments, lists what's due, flags overdue (`loadReceivables`, `renderReceivables`). |
 | `payables.js` | To pay | Owe entries plus any purchase still owing money, in one list (`loadPayables`, `openPayableForm`, `savePayable`). |
 | `loans.js` | Loans | Money given out: list with returned/late state, optional return schedule, the detail sheet with schedule + recorded returns (`openLoanDetail`, `setLoanReturned`, `saveLoan`). |
-| `expenses.js` | Expenses | Money spent — "Paid to" who + what for (`saveExpense`). |
+| `expenses.js` | Expenses | Envelope cards with the spends recorded inside them: parent/child rows (`expenseTree`), the card's detail sheet with **Given / Spent / Left** (`openExpenseDetail`), the shared form in card or child mode (`openExpenseForm`, hidden `#expense-parent` → `parent_id` on save), and per-row ownership gates (`canEditRow` / `canDelRow`). |
 | `purchases.js` | Purchases | Things bought (batch statement or local item picker), cash/bank/installment payments, balance + status badge (`savePurchase`, `syncPurchaseForm`). |
 | `zakat.js` | Zakat | Simple list + form, same pattern as expenses. |
 
@@ -205,6 +205,14 @@ It is stored as one JSON document per person in `app_users.perms`:
 - `delete`: a separate tick — "may remove entries in this flow"
 - `is_admin = true` bypasses everything (admins also manage the Users sheet)
 
+**Row ownership (expenses).** On top of the flow grant, every expense row carries
+`created_by` (defaults to `auth.uid()`), and a non-admin may only change rows they
+created: `canEditRow(r)` / `canDelRow(r)` in `expenses.js` hide Edit/✕ on other
+people's rows, while the `expenses` insert/update/delete policies in `schema.sql`
+refuse the same operations server-side (`app_is_admin() or created_by = auth.uid()`).
+SELECT stays open for anyone with read access, so the whole team can see where the
+money went. Deleting a card cascades to its spends (`parent_id … on delete cascade`).
+
 **Layer 1 — the UI (JavaScript).** After login, `auth.js` `loadMe()` reads the row
 into `state.me`, then `applyAccess()` (in `navigation.js`) hides forbidden tabs,
 *+ New* buttons and the Users button. Everywhere else asks the small helpers in
@@ -213,7 +221,7 @@ into `state.me`, then `applyAccess()` (in `navigation.js`) hides forbidden tabs,
 | Helper | Used for |
 | --- | --- |
 | `can(flow, "read")` | may this person open the screen / see its data? |
-| `can(flow, "write")` | show *+ New*, Edit, row-tap-opens-form, + Pay… |
+| `can(flow, "write")` | show *+ New*, Edit, row-tap-opens-form (on Expenses the tap always opens the detail sheet), + Pay… |
 | `canDelete(flow)` | show ✕ / Delete buttons |
 | `canAny([flows], need)` | shared data (e.g. dashboard cards, payments) |
 

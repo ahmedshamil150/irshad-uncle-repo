@@ -45,6 +45,9 @@ const state = {
   returnTo: null,
   returnSaleId: null,
   returnLoanId: null,
+  /* the expense card whose detail sheet was last open (the form can return
+     to it — see dismissModals in core.js) */
+  expDetailId: null,
 };
 
 /* view name -> the function that loads it (wrapped in arrows so this file

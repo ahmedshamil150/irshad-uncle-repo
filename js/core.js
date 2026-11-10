@@ -140,6 +140,14 @@ window.addEventListener("popstate", () => {
 /* closing payment modal returns you to the sale/loan detail it was opened from */
 function dismissModals() {
   const open = $$(".modal").find((m) => !m.hidden);
+  /* Cancelling the expense form returns to the card's detail sheet: switch
+     sheets IN PLACE (openModal closes the form). Calling closeModals() first
+     would issue history.back(), whose popstate lands after the synchronous
+     reopen and closes the sheet we just showed. */
+  if (open?.id === "modal-expense" && state.returnTo === "modal-expense-detail" && state.expDetailId) {
+    openExpenseDetail(state.expDetailId);
+    return;
+  }
   closeModals();
   if (open?.id === "modal-payment" && state.returnTo === "modal-sale-detail" && state.returnSaleId) {
     openSaleDetail(state.returnSaleId).catch(() => {});

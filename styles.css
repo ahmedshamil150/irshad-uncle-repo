@@ -321,6 +321,9 @@ h1, h2, h3 { margin: 0; }
 .row-bal { font-size: 12px; margin-top: 3px; font-weight: 600; }
 .bal-due { color: var(--red); }
 .bal-ok { color: var(--green); }
+/* a spend revealed under its card while searching — indented and dimmed so
+   the card stays the anchor of the result */
+.row-child { margin-left: 18px; padding: 10px 12px; background: #f8fafc; }
 
 .badge {
   font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
@@ -394,11 +397,15 @@ h1, h2, h3 { margin: 0; }
    uppercase section headers, and one .pay-item line per payment
    (with the ✕ delete button only when the user may delete) */
 .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; margin-bottom: 14px; }
+/* expense detail: the given / spent / left strip fits three across */
+.detail-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
 .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
 .section-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 16px 0 8px; }
 .pay-item { display: flex; align-items: center; gap: 9px; padding: 9px 11px; background: #f8fafc; border-radius: 9px; margin-bottom: 7px; font-size: 14px; }
 .pay-item .pi-main { flex: 1; min-width: 0; }
 .pay-item .pi-sub { font-size: 12px; color: var(--muted); }
+/* Edit / ✕ buttons parked at the right of a spend line */
+.pay-item .pi-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .icon-del { border: 0; background: var(--red-soft); color: var(--red); border-radius: 7px; width: 28px; height: 28px; cursor: pointer; font-size: 13px; flex-shrink: 0; }
 
 /* Installment rows inside the detail sheets — red when overdue,

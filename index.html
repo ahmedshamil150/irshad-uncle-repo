@@ -805,6 +805,8 @@
       </div>
       <form id="expense-form" class="modal-body form">
         <input type="hidden" id="expense-id" />
+        <!-- filled when adding/editing a SPEND inside a card (envelope) -->
+        <input type="hidden" id="expense-parent" />
         <label class="field"><span>Date *</span>
           <input type="date" id="expense-date" required />
         </label>
@@ -839,6 +841,18 @@
           <button type="submit" class="btn btn-primary">Save</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Expense detail (the "envelope"): how much was given, how much of it
+       was spent and what is left, plus every spend recorded inside it -->
+  <div id="modal-expense-detail" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>Expense detail</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <div class="modal-body" id="expense-detail-body"></div>
     </div>
   </div>
 

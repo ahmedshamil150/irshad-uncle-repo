@@ -11,7 +11,7 @@ Works on laptop and phone. Currency: PKR.
 - **Filters** — every list tab (Sales, Purchases, Loans, Expenses, Zakat, To receive, To pay) has a ⚙ *Filters* panel with its own search box, custom from/to dates, one-tap date ranges (Today / Yesterday / This week / This month / Last month), an amount range (`1l` / `50k` style amounts work here too), a count badge, a live *X of Y match* line, a *Showing … total* line and **Clear all filters** — plus a tab-specific dropdown where it helps: Sold through / salesman / kind / status on Sales, batch vs local on Purchases, still out / past due / returned on Loans, overdue on To receive, still-to-pay / partly paid / paid on To pay. Summary cards always keep the full period totals; only the list narrows.
 - **Loans (money given out)** — record cash you gave someone: who, how much, on which day, and when he will give it back. If he returns it in parts, tick **Returns in installments** and pick the months + first due date — a schedule is built like a sale's, and each row shows **pending / partial / paid / overdue** as you record the money coming back (**+ Record return** on the loan's detail sheet); when the last rupee is in, the loan marks itself **Returned**. One-tick **✓ Returned** still works for a simple loan, and the page totals what is still to get back (part payments included), what is late, and what was returned.
 - **Empty lists** — stay short and quiet: *“No zakat entries yet.”*, *“No loans yet.”*, *“No expenses yet.”* — no instruction sentences; the *+ New* button sits right above the list. When filters are on instead, it says *“… match these filters.”*
-- **Expenses (money spent)** — record who the money was given to (**Paid to**, required — past names pop up as suggestions) and what it was for (rent, salary, bills… suggestions pop up), plus the day, how much, and optional notes. List lines read `06 Nov 2026 · Rent · Paid to: Bilal`, and the page totals this month, this year, and all time, with search over the name, reason and notes.
+- **Expenses (envelopes: money given out, then spent inside)** — record who the money was given to (**Paid to**, required — past names pop up as suggestions) and what it was for, plus the day, how much, and optional notes. Every top-level expense is a **card**: Irshad gives Rauf 30k, Rauf logs in, opens that card and taps **+ Add spend** to record each use inside it (`3k Milkman`, `1.5k tea`) — the card shows **Given / Spent / Left** (green, red once overspent) so everyone with access can follow where the money went. Tapping a card opens its detail sheet with the spends listed inside; list lines read `06 Nov 2026 · Rent · Paid to: Bilal`, the page totals this month / this year / all time count **cards only** (never double-counting their spends), and searching a spend's name finds its card with that spend drawn underneath. Each row may only be edited or removed by the person who created it — admins can change anything — and the database enforces the same rule.
 - **Purchases (things bought)** — the form first asks whether this is a **Batch purchase** or a **Local purchase**, then shows the matching input: **Batch** = a whole lot bought at once, written as **one statement** (`5 machines, 20 probes, 3 printers` — however he likes it); **Local** = the item picker, the same procedure as a sale (machine-type dropdown with 15 types, printer / probe tick-boxes, free-form lines — one line per item). Editing restores whichever kind it was saved as. Either way: the day, supplier (optional), amount and notes. **How it was paid** works like a sale — enter **Cash** and/or **Bank** (a live line shows *Paid now · Left to pay*), and tick **Installments** to spread what is left over months (count + first due date, with a schedule preview); cash/bank + installments must cover the total, or it tells you what is uncovered. Rows show their balance (`Rs 80,000 left`), a **pending / partial / overdue / paid** badge and `+ Pay`, and any money still owed on a purchase joins the **To pay** tab with a *Purchase* badge. Totals this month / this year / all time, with search, edit and delete.
 - **Notes everywhere** — every kind of entry (sale, purchase, expense, zakat, personal loan, what-you-owe, and each payment) has an optional Notes field, and the note shows next to the entry in its list.
 - **Zakat** — its own tab to record zakat given: the day, the amount, and an optional note (e.g. on whose behalf). Totals this month / this year / all time, and the Dashboard shows a **Zakat** card for the selected date range.
@@ -40,7 +40,7 @@ js/                   all app logic — one file per feature (explained in CODE_
   receivables.js        "To receive" (customers still owe us)
   payables.js           "To pay" (we owe dealers/suppliers)
   loans.js              money given out + detail sheet + return schedule
-  expenses.js           money spent
+  expenses.js           expense cards + the spends recorded inside them (envelopes)
   purchases.js          things bought (batch or local)
   zakat.js              zakat given
   payments.js           the shared payment sheet (sale / owe / purchase / loan)
@@ -66,7 +66,9 @@ CODE_GUIDE.md         plain-English walkthrough of the code + technologies used
 This creates the 12 tables (`sales`, `installments`, `purchase_installments`, `loan_installments`,
 `payables`, `payments`, `salesmen`, `personal_loans`, `expenses`, `purchases`, `zakat`, `app_users`)
 and enables RLS: every read/write/delete is checked against that person's permissions
-(see *Users & access levels* below). It also seeds the salesmen list
+(see *Users & access levels* below). `expenses` additionally carries `parent_id` (a spend
+inside a card) and `created_by` (who may change it), backfilled for any existing rows.
+It also seeds the salesmen list
 with **Yasir**, **Fazal** and **Usman** (safe to re-run — existing names are skipped).
 
 > **Upgrading an older database?** Just paste and Run the file again — it is idempotent.
@@ -153,10 +155,13 @@ The admin can give other people their own login and control exactly what each on
 5. **Save**. Tap their row later to change anything, or **Remove** to delete them and their login
 
 **Example:** give someone **Expenses → Add & edit** and nothing else. They log in and land
-straight on Expenses, can add and edit expenses, but the ✕ stays hidden — and every other
-tab (and all its data) is invisible to them. The same rules are enforced in the database by
-Row Level Security (`app_can()` in `supabase/schema.sql`), so the hidden buttons are not the
-only guard.
+straight on Expenses, can add expenses and record spends inside the cards, but the ✕ stays
+hidden — and every other tab (and all its data) is invisible to them. They can also only
+change rows they created themselves: Irshad's 30k card is open for Rauf to see and spend
+inside, but he can't edit or delete the card (the admin can change everything). The same
+rules are enforced in the database by Row Level Security (`app_can()` plus the
+ownership check on `expenses.created_by` in `supabase/schema.sql`), so the hidden buttons
+are not the only guard.
 
 Things worth knowing:
 
@@ -197,5 +202,5 @@ Things worth knowing:
 3. **To receive** → tap a customer → *+ Add payment* when money comes in
 4. **To pay** → *+ Add what you owe* for a dealer, *+ Pay* when you pay
 5. **Loans** → *+ New loan* when you hand money to someone, tick *✓ Returned* when it comes back
-6. **Expenses** → *+ New expense* whenever money is spent (rent, bills, salary…)
+6. **Expenses** → *+ New expense* when you hand cash out (a card, e.g. 30k to Rauf); open the card and *+ Add spend* for each use inside it — the sheet keeps **Given / Spent / Left** for everyone
 7. **Dashboard** → month/year totals whenever needed
