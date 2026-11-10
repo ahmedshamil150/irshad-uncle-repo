@@ -187,48 +187,6 @@ create trigger trg_sales_updated_at
   before update on public.sales
   for each row execute function public.set_updated_at();
 
--- ============ ROW LEVEL SECURITY ============
--- Multi-user: logging in is Supabase Auth, and WHAT a user may do is decided
--- by the permissions the admin gave them (stored in app_users.perms, checked
--- through public.app_can() which is defined in the next section):
---   select            -> app_can('<table>', 'read')
---   insert / update   -> app_can('<table>', 'write')
---   delete            -> app_can('<table>', 'delete')   (per-flow "can delete" tick)
-
-alter table public.sales           enable row level security;
-alter table public.installments    enable row level security;
-alter table public.purchase_installments enable row level security;
-alter table public.loan_installments     enable row level security;
-alter table public.payables        enable row level security;
-alter table public.payments        enable row level security;
-alter table public.salesmen        enable row level security;
-alter table public.personal_loans enable row level security;
-alter table public.expenses       enable row level security;
-alter table public.purchases      enable row level security;
-alter table public.zakat          enable row level security;
-
--- The policies below are (re)built for every table in this list — one read,
--- one insert, one update and one delete policy each. Re-running is safe:
--- every policy is dropped first.
-do $$
-declare t text;
-begin
-  foreach t in array array[
-    'sales','installments','purchase_installments','loan_installments','payables',
-    'payments','salesmen','personal_loans','expenses','purchases','zakat'
-  ] loop
-    execute format('drop policy if exists "auth all"    on public.%I', t);
-    execute format('drop policy if exists "flow select" on public.%I', t);
-    execute format('drop policy if exists "flow insert" on public.%I', t);
-    execute format('drop policy if exists "flow update" on public.%I', t);
-    execute format('drop policy if exists "flow delete" on public.%I', t);
-    execute format('create policy "flow select" on public.%I for select  to authenticated using      (public.app_can(%L, ''read''))',  t, t);
-    execute format('create policy "flow insert" on public.%I for insert to authenticated with check (public.app_can(%L, ''write''))', t, t);
-    execute format('create policy "flow update" on public.%I for update to authenticated using      (public.app_can(%L, ''write'')) with check (public.app_can(%L, ''write''))', t, t, t);
-    execute format('create policy "flow delete" on public.%I for delete to authenticated using      (public.app_can(%L, ''delete''))', t, t);
-  end loop;
-end $$;
-
 -- ============ USERS & ACCESS (admin adds people, gives per-flow access) ============
 
 -- One row per person who may use the app. perms is a small JSON document:
@@ -297,6 +255,52 @@ begin
   end loop;
   return false;
 end $$;
+
+-- ============ ROW LEVEL SECURITY ============
+-- Multi-user: logging in is Supabase Auth, and WHAT a user may do is decided
+-- by the permissions the admin gave them (stored in app_users.perms, checked
+-- through public.app_can() (defined in the USERS & ACCESS section above):
+--   select            -> app_can('<table>', 'read')
+--   insert / update   -> app_can('<table>', 'write')
+--   delete            -> app_can('<table>', 'delete')   (per-flow "can delete" tick)
+
+alter table public.sales           enable row level security;
+alter table public.installments    enable row level security;
+alter table public.purchase_installments enable row level security;
+alter table public.loan_installments     enable row level security;
+alter table public.payables        enable row level security;
+alter table public.payments        enable row level security;
+alter table public.salesmen        enable row level security;
+alter table public.personal_loans enable row level security;
+alter table public.expenses       enable row level security;
+alter table public.purchases      enable row level security;
+alter table public.zakat          enable row level security;
+
+-- The policies below are (re)built for every table in this list — one read,
+-- one insert, one update and one delete policy each. Re-running is safe:
+-- every policy is dropped first.
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'sales','installments','purchase_installments','loan_installments','payables',
+    'payments','salesmen','personal_loans','expenses','purchases','zakat'
+  ] loop
+    execute format('drop policy if exists "auth all"    on public.%I', t);
+    execute format('drop policy if exists "flow select" on public.%I', t);
+    execute format('drop policy if exists "flow insert" on public.%I', t);
+    execute format('drop policy if exists "flow update" on public.%I', t);
+    execute format('drop policy if exists "flow delete" on public.%I', t);
+    execute format('create policy "flow select" on public.%I for select  to authenticated using      (public.app_can(%L, ''read''))',  t, t);
+    execute format('create policy "flow insert" on public.%I for insert to authenticated with check (public.app_can(%L, ''write''))', t, t);
+    execute format('create policy "flow update" on public.%I for update to authenticated using      (public.app_can(%L, ''write'')) with check (public.app_can(%L, ''write''))', t, t, t);
+    execute format('create policy "flow delete" on public.%I for delete to authenticated using      (public.app_can(%L, ''delete''))', t, t);
+  end loop;
+end $$;
+
+-- ============ USERS & ACCESS (continued): policies, bootstrap, admin RPCs ============
+-- The app_users table and the app_can / app_is_admin helpers live ABOVE the
+-- row-level-security section, because the policies there call app_can() first.
 
 -- app_users' own policies: everyone reads THEMSELVES (the app loads its own
 -- permissions after login), the admin reads/edits EVERYONE.
