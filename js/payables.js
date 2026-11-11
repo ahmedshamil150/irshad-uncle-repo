@@ -21,10 +21,16 @@ async function loadPayables() {
     if (pR.error) throw pR.error;
     if (puR.error) throw puR.error;
     // Running totals keyed by id - how much has been paid against each owe entry and each purchase.
-    const pay = {}, payP = {};
+    const pay = {}, payP = {}, payN = {}, payPN = {};
     for (const p of pR.data || []) {
-      if (p.payable_id) pay[p.payable_id] = (pay[p.payable_id] || 0) + num(p.amount);
-      if (p.purchase_id) payP[p.purchase_id] = (payP[p.purchase_id] || 0) + num(p.amount);
+      if (p.payable_id) {
+        pay[p.payable_id] = (pay[p.payable_id] || 0) + num(p.amount);
+        payN[p.payable_id] = (payN[p.payable_id] || 0) + 1;
+      }
+      if (p.purchase_id) {
+        payP[p.purchase_id] = (payP[p.purchase_id] || 0) + num(p.amount);
+        payPN[p.purchase_id] = (payPN[p.purchase_id] || 0) + 1;
+      }
     }
 
     /* what we owe on purchases joins the list — only the still-unpaid part,
@@ -34,13 +40,14 @@ async function loadPayables() {
         ...r,
         isPurchase: true,
         party: r.supplier || oneLine(r.title),
+        payCount: payPN[r.id] || 0,
         bal: round2(num(r.amount) - num(r.cash_amount) - num(r.bank_amount) - (payP[r.id] || 0)), // ... money still missing: total minus cash, bank and payments so far
       }))
       .filter((r) => r.bal > 0.009);
 
     // Merge both kinds of rows into one list, newest entry first, then draw it.
     state.payRows = [
-      ...(bR.data || []).map((r) => ({ ...r, bal: round2(num(r.amount) - (pay[r.id] || 0)) })),
+      ...(bR.data || []).map((r) => ({ ...r, payCount: payN[r.id] || 0, bal: round2(num(r.amount) - (pay[r.id] || 0)) })),
       ...owedPurchases,
     ].sort((a, b) => String(b.entry_date || "").localeCompare(String(a.entry_date || "")));
     renderPayables();
@@ -62,6 +69,7 @@ function renderPayables() {
       (r.title || "").toLowerCase().includes(q)
   );
   const rows = applyListFilters("payables", searched, all);
+  const today = todayISO();
 
   // What may THIS user do here (see core.js). This screen mixes two kinds of
   // rows, each owned by its own flow: owe entries belong to payables, rows
@@ -79,10 +87,12 @@ function renderPayables() {
           const w = r.isPurchase ? canBuyWrite : canWrite;   // may edit this row
           const d = r.isPurchase ? canBuyDel : canDel;       // may delete this row
           const pay = canWrite || (r.isPurchase && canBuyWrite);
+          /* past its due date with money still owing → red "overdue" badge */
+          const overdue = !!r.due_date && r.due_date < today && r.bal > 0.009;
           return `<div class="row" data-id="${r.id}">
             <div class="row-main">
-              <div class="row-title">${esc(r.party)}${r.isPurchase ? ' <span class="badge badge-partial">Purchase</span>' : ""}</div>
-              <div class="row-sub">${fmtDate(r.entry_date)}${r.isPurchase && r.supplier ? " · " + esc(oneLine(r.title)) : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
+              <div class="row-title">${esc(r.party)}${r.isPurchase ? ' <span class="badge badge-partial">Purchase</span>' : ""}${overdue ? ' <span class="badge badge-overdue">overdue</span>' : ""}</div>
+              <div class="row-sub">${fmtDate(r.entry_date)}${r.due_date ? " · due " + fmtDate(r.due_date) : ""}${r.isPurchase && r.supplier ? " · " + esc(oneLine(r.title)) : ""}${r.payCount ? ` · ${r.payCount} payment${r.payCount === 1 ? "" : "s"}` : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
             </div>
             <div class="row-right">
               <div class="row-amount">${money(r.amount)}</div>
@@ -90,6 +100,7 @@ function renderPayables() {
             </div>
             ${w || d || pay ? `<div class="row-actions">
               ${pay && r.bal > 0.009 ? `<button type="button" class="btn btn-sm btn-primary" data-act="pay">+ Pay</button>` : ""}
+              ${pay && r.bal <= 0.009 && r.payCount > 0 ? `<button type="button" class="btn btn-sm btn-ghost" data-act="hist">History</button>` : ""}
               ${w ? `<button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>` : ""}
               ${d ? `<button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>` : ""}
             </div>` : ""}
@@ -109,6 +120,8 @@ function renderPayables() {
         const act = e.target.closest("[data-act]")?.dataset.act;
         const target = r.isPurchase ? "purchase" : "payable";
         if (act === "pay") openPaymentModal(target, r.id, `${r.party} — still to pay ${money(r.bal)}`, r.bal);
+        /* fully paid with payments behind it → the sheet opens history-only */
+        else if (act === "hist") openPaymentModal(target, r.id, `${r.party} — paid in full`, 0);
         else if (act === "edit") r.isPurchase ? openPurchaseForm(r) : openPayableForm(r);
         else if (act === "del")
           askConfirm(
@@ -145,6 +158,7 @@ function openPayableForm(r = null) {
   $("#payable-date").value = r?.entry_date || todayISO();
   $("#payable-amount").value = r ? num(r.amount) : "";
   $("#payable-party").value = r?.party || "";
+  $("#payable-due").value = r?.due_date || "";
   $("#payable-notes").value = r?.notes || "";
   openModal("modal-payable");
 }
@@ -160,6 +174,7 @@ async function savePayable(e) {
     entry_date: $("#payable-date").value || todayISO(),
     party: $("#payable-party").value.trim(),
     amount: round2(amountN),
+    due_date: $("#payable-due").value || null,
     notes: $("#payable-notes").value.trim() || null,
   };
   // Three checks: the amount is a number, a party is named, and the amount is above zero.

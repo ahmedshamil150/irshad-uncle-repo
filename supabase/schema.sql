@@ -43,6 +43,7 @@ create table if not exists public.payables (
   entry_date  date not null default current_date,
   party       text not null,
   amount      numeric(14,2) not null check (amount > 0),
+  due_date    date,
   notes       text
 );
 
@@ -85,6 +86,7 @@ create table if not exists public.purchases (
   amount     numeric(14,2) not null check (amount > 0),
   cash_amount numeric(14,2) not null default 0 check (cash_amount >= 0),
   bank_amount numeric(14,2) not null default 0 check (bank_amount >= 0),
+  due_date    date,
   notes      text,
   mode       text not null default 'batch' check (mode in ('batch','local'))
 );
@@ -120,6 +122,7 @@ create table if not exists public.payments (
   loan_id     uuid references public.personal_loans(id) on delete cascade,
   amount      numeric(14,2) not null check (amount > 0),
   method      text not null default 'cash' check (method in ('cash','bank')),
+  payer       text,
   notes       text,
   constraint one_target check (
     (case when sale_id is not null then 1 else 0 end
@@ -165,6 +168,11 @@ alter table public.purchases add column if not exists cash_amount numeric(14,2) 
 alter table public.purchases add column if not exists bank_amount numeric(14,2) not null default 0 check (bank_amount >= 0);
 alter table public.payments add column if not exists purchase_id uuid references public.purchases(id) on delete cascade;
 alter table public.payments add column if not exists loan_id uuid references public.personal_loans(id) on delete cascade;
+-- When the money is due back (owe entries and purchases alike) + who handed
+-- a payment over — both optional, both shown in the To pay list/history.
+alter table public.payables add column if not exists due_date date;
+alter table public.purchases add column if not exists due_date date;
+alter table public.payments add column if not exists payer text;
 alter table public.payments drop constraint if exists one_target;
 alter table public.payments add constraint one_target check (
   (case when sale_id is not null then 1 else 0 end

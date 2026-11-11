@@ -158,8 +158,11 @@ ids.
 
 **`js/payments.js`** — one payment sheet used by four places: sale, owe entry,
 purchase and loan (`openPaymentModal(type, id, context, max)` /
-`savePayment`). It writes a row into `payments`; if a loan receives its last
-rupee it also stamps `returned_at` on the loan.
+`savePayment`). It writes a row into `payments` (date, amount, cash/bank,
+**given by** — `payer` — and a note) and draws that target's payment
+**history** at the bottom of the sheet (`renderPayHistory`); when nothing is
+left to pay the sheet opens history-only. If a loan receives its last rupee it
+also stamps `returned_at` on the loan.
 
 **`js/users.js`** — the admin **Users & access** sheet (two panes: list and
 add/edit form). `openUsers()` loads everyone through the `admin_list_users`
@@ -177,10 +180,10 @@ and refuse to run for non-admins.
 | `dashboard.js` | Dashboard | Loads the chosen date range and draws the summary cards (`loadDashboard`, `applyRange`). |
 | `sales.js` | Sales | The biggest screen: list + ⚙ filters + search (`filterSales`, `renderSales`), the sale detail sheet (`openSaleDetail`), the salesman manager (`openSalesmenModal`), and the New Sale form with its installment schedule (`openSaleForm`, `buildSchedule`, `saveSale`). |
 | `receivables.js` | To receive | Joins unpaid sale installments with their payments, lists what's due, flags overdue (`loadReceivables`, `renderReceivables`). |
-| `payables.js` | To pay | Owe entries plus any purchase still owing money, in one list (`loadPayables`, `openPayableForm`, `savePayable`). |
+| `payables.js` | To pay | Owe entries plus any purchase still owing money, in one list (`loadPayables`, `openPayableForm`, `savePayable`). Each row can carry a due date; past it with money owing the row gets an *overdue* badge (also a filter choice in `filters.js`). |
 | `loans.js` | Loans | Money given out: list with returned/late state, optional return schedule, the detail sheet with schedule + recorded returns (`openLoanDetail`, `setLoanReturned`, `saveLoan`). |
 | `expenses.js` | Expenses | Envelope cards with the spends recorded inside them: parent/child rows (`expenseTree`), the card's detail sheet with **Given / Spent / Left** (`openExpenseDetail`), the shared form in card or child mode (`openExpenseForm`, hidden `#expense-parent` → `parent_id` on save), and per-row ownership gates (`canEditRow` / `canDelRow`). |
-| `purchases.js` | Purchases | Things bought (batch statement or local item picker), cash/bank/installment payments, balance + status badge (`savePurchase`, `syncPurchaseForm`). |
+| `purchases.js` | Purchases | Things bought (batch statement or local item picker), cash/bank/installment payments, balance + status badge (`savePurchase`, `syncPurchaseForm`). The installment schedule is optional: without it the unpaid balance just stays *left* and is settled later through + Pay. |
 | `zakat.js` | Zakat | Simple list + form, same pattern as expenses. |
 | `cashin.js` | Cash in | Cash received from people: same list + form pattern as zakat, plus a *Received from* and *Reason* field (`loadCashIn`, `renderCashIn`, `openCashInForm`, `saveCashIn`). |
 

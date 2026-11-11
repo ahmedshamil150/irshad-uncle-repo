@@ -488,6 +488,7 @@
                 <option value="due">Still to pay</option>
                 <option value="part">Partly paid</option>
                 <option value="paid">Fully paid</option>
+                <option value="overdue">Overdue</option>
               </select>
             </label>
             <label class="field"><span>From date</span><input type="date" id="pb-from" /></label>
@@ -726,27 +727,37 @@
         <input type="hidden" id="pay-target-type" />
         <input type="hidden" id="pay-target-id" />
         <p id="pay-context" class="pay-context"></p>
-        <div class="grid-2">
-          <label class="field"><span>Date *</span>
-            <input type="date" id="pay-date" required />
+        <!-- the entry fields hide themselves when there is nothing left to pay
+             (the sheet then only shows the history) -->
+        <div id="payment-fields">
+          <div class="grid-2">
+            <label class="field"><span>Date *</span>
+              <input type="date" id="pay-date" required />
+            </label>
+            <label class="field"><span>Amount (Rs) *</span>
+              <input type="text" id="pay-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 50000" />
+            </label>
+          </div>
+          <label class="field"><span>Paid by</span>
+            <select id="pay-method">
+              <option value="cash">Cash</option>
+              <option value="bank">Bank</option>
+            </select>
           </label>
-          <label class="field"><span>Amount (Rs) *</span>
-            <input type="text" id="pay-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 50000" />
+          <label class="field"><span>Given by</span>
+            <input type="text" id="pay-payer" placeholder="Person's name — who handed it over (optional)" />
+          </label>
+          <label class="field"><span>Notes</span>
+            <input type="text" id="pay-notes" placeholder="Optional" />
           </label>
         </div>
-        <label class="field"><span>Paid by</span>
-          <select id="pay-method">
-            <option value="cash">Cash</option>
-            <option value="bank">Bank</option>
-          </select>
-        </label>
-        <label class="field"><span>Notes</span>
-          <input type="text" id="pay-notes" placeholder="Optional" />
-        </label>
+        <!-- every payment ever recorded against this target, newest first -->
+        <div class="section-label" id="pay-history-label">History</div>
+        <div id="pay-history"></div>
         <p id="payment-form-error" class="form-error" hidden></p>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" data-close>Cancel</button>
-          <button type="submit" class="btn btn-primary">Save payment</button>
+          <button type="submit" class="btn btn-primary" id="pay-save-btn">Save payment</button>
         </div>
       </form>
     </div>
@@ -771,6 +782,9 @@
         </div>
         <label class="field"><span>Dealer / supplier *</span>
           <input type="text" id="payable-party" required placeholder="Who do you owe?" />
+        </label>
+        <label class="field"><span>Due date</span>
+          <input type="date" id="payable-due" />
         </label>
         <label class="field"><span>Notes</span>
           <input type="text" id="payable-notes" placeholder="Optional" />
@@ -1019,6 +1033,10 @@
             </div>
           </div>
         </details>
+
+        <label class="field"><span>Due date</span>
+          <input type="date" id="purchase-due" />
+        </label>
 
         <label class="field"><span>Notes</span>
           <input type="text" id="purchase-notes" placeholder="Optional" />

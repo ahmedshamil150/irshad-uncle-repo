@@ -28,8 +28,11 @@ async function loadPurchases() {
 
     // Group payments and installments by purchase id, so each purchase can
     // be scored below with a simple lookup instead of re-scanning the tables.
-    const pay = {};
-    for (const p of payR.data || []) if (p.purchase_id) pay[p.purchase_id] = (pay[p.purchase_id] || 0) + num(p.amount);
+    const pay = {}, payCount = {};
+    for (const p of payR.data || []) if (p.purchase_id) {
+      pay[p.purchase_id] = (pay[p.purchase_id] || 0) + num(p.amount);
+      payCount[p.purchase_id] = (payCount[p.purchase_id] || 0) + 1;
+    }
     const instMap = {};
     for (const s of iR.data || []) (instMap[s.purchase_id] ||= []).push(s);
     for (const k of Object.keys(instMap)) instMap[k].sort((a, b) => a.installment_no - b.installment_no);
@@ -38,6 +41,7 @@ async function loadPurchases() {
     // Per purchase: how much was paid, how much is still owed, and the badge.
     state.purchaseRows = (pR.data || []).map((r) => {
       const paid = round2(pay[r.id] || 0);
+      const count = payCount[r.id] || 0;
       // Remaining = total price minus what was covered up front (cash + bank) minus later payments.
       const bal = round2(num(r.amount) - num(r.cash_amount) - num(r.bank_amount) - paid);
       /* schedule status: payments allocate FIFO over the rows, like sales */
@@ -50,14 +54,17 @@ async function loadPurchases() {
         if (a - allocated <= 0.009) instPaid++;
         else if (s.due_date < today) overdueInst = true;
       }
-      // Badge: no schedule → none; balance cleared → paid; a late installment
-      // → overdue; some money received → partial; otherwise pending.
-      const status = !sched.length ? null
-        : bal <= 0.009 ? "paid"
-        : overdueInst ? "overdue"
-        : paid > 0 ? "partial"
+      // Badge: balance cleared → paid; a late installment (or a past due date
+      // on a purchase with no schedule) → overdue; money already moved →
+      // partial; otherwise pending. A purchase with no schedule at all still
+      // gets its badge — that is how an "unknown plan" row is marked.
+      const covered = num(r.cash_amount) + num(r.bank_amount) + paid;
+      const status = bal <= 0.009 ? "paid"
+        : sched.length ? (overdueInst ? "overdue" : paid > 0 ? "partial" : "pending")
+        : r.due_date && r.due_date < today ? "overdue"
+        : covered > 0.009 ? "partial"
         : "pending";
-      return { ...r, bal, paid, instCount: sched.length, instPaid, status };
+      return { ...r, bal, paid, payCount: count, instCount: sched.length, instPaid, status };
     });
     renderPurchases();
   } finally {
@@ -107,7 +114,7 @@ function renderPurchases() {
           (r) => `<div class="row" data-id="${r.id}">
             <div class="row-main">
               <div class="row-title">${esc(oneLine(r.title))}${r.status ? `<span class="badge badge-${r.status}">${r.status}</span>` : ""}</div>
-              <div class="row-sub">${fmtDate(r.entry_date)}${r.supplier ? " · " + esc(r.supplier) : ""}${r.instCount ? ` · ${r.instPaid}/${r.instCount} installments paid` : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
+              <div class="row-sub">${fmtDate(r.entry_date)}${r.supplier ? " · " + esc(r.supplier) : ""}${r.instCount ? ` · ${r.instPaid}/${r.instCount} installments paid` : ""}${r.due_date ? ` · due ${fmtDate(r.due_date)}` : ""}${r.payCount ? ` · ${r.payCount} payment${r.payCount === 1 ? "" : "s"}` : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
             </div>
             <div class="row-right">
               <div class="row-amount ${r.bal > 0.009 ? "bal-due" : ""}">${money(r.amount)}</div>
@@ -115,6 +122,7 @@ function renderPurchases() {
             </div>
             ${canWrite || canDel ? `<div class="row-actions">
               ${canWrite && r.bal > 0.009 ? `<button type="button" class="btn btn-sm btn-primary" data-act="pay">+ Pay</button>` : ""}
+              ${canWrite && r.bal <= 0.009 && r.payCount > 0 ? `<button type="button" class="btn btn-sm btn-ghost" data-act="hist">History</button>` : ""}
               ${canWrite ? `<button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>` : ""}
               ${canDel ? `<button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>` : ""}
             </div>` : ""}
@@ -132,6 +140,8 @@ function renderPurchases() {
     el.addEventListener("click", (e) => {
       const act = e.target.closest("[data-act]")?.dataset.act;
       if (act === "pay") openPaymentModal("purchase", r.id, `${oneLine(r.title)} — still to pay ${money(r.bal)}`, r.bal);
+      /* fully paid with payments behind it → the sheet opens history-only */
+      else if (act === "hist") openPaymentModal("purchase", r.id, `${oneLine(r.title)} — paid in full`, 0);
       else if (act === "edit") openPurchaseForm(r);
       else if (act === "del")
         askConfirm("Delete this purchase?", `Delete ${oneLine(r.title)} (${money(r.amount)})?`, async () => {
@@ -185,6 +195,7 @@ async function openPurchaseForm(r = null) {
   /* how it was paid + the installment schedule, restored for editing */
   $("#purchase-cash").value = r && num(r.cash_amount) > 0 ? num(r.cash_amount) : "";
   $("#purchase-bank").value = r && num(r.bank_amount) > 0 ? num(r.bank_amount) : "";
+  $("#purchase-due").value = r?.due_date || "";
   // Installment defaults for a fresh form: off, 12 parts, no first due date.
   $("#purchase-installment").checked = false;
   $("#purchase-inst-count").value = "12";
@@ -215,15 +226,20 @@ function syncPurchaseForm() {
   const total = amt($("#purchase-amount").value);
   const paid = amt($("#purchase-cash").value) + amt($("#purchase-bank").value);
   const due = round2(total - paid);
+  const inst = $("#purchase-installment").checked;
   $("#purchase-paid-summary").innerHTML =
     total <= 0
       ? `Enter the amount above — what is paid and what is left shows here.`
       : `Paid now: <b>${money(paid)}</b>` +
         ` &nbsp;·&nbsp; Left to pay: <b>${money(Math.max(due, 0))}</b>` +
+        /* with no schedule the balance simply stays "left" — say so, so it is
+           clear the purchase can be saved without knowing the plan yet */
+        (due > 0.009 && !inst
+          ? `<br><span style="color:var(--muted)">Save it as it is — the left-over stays marked, and each payment is recorded later with + Pay.</span>`
+          : "") +
         (paid > total + 0.009 ? `<br><span style="color:var(--red)">The paid amount is more than the total — fix it before saving.</span>` : "");
 
   // Show or hide the installment fields, and preview the schedule when they are on.
-  const inst = $("#purchase-installment").checked;
   $("#purchase-inst-fields").hidden = !inst;
   if (inst) renderPurchaseInstPreview();
 }
@@ -293,14 +309,13 @@ async function savePurchase(e) {
   const financed = round2(total - cash - bank);
   if (total <= 0) return fail("Enter how much was paid for it.");
   if (cash + bank > total + 0.009) return fail("The paid amount can't be more than the total purchase.");
-  // Installments need something left unpaid to spread out; without them the
-  // cash + bank must cover the whole total.
+  // Installments need something left unpaid to spread out; WITHOUT them the
+  // leftover is fine too — it simply stays "left to pay" (marked on the row
+  // and settled later, payment by payment, from the To pay tab).
   if (isInst) {
     if (financed <= 0) return fail("For installments, leave some amount unpaid (total minus paid).");
     if (count < 1 || count > 120) return fail("Enter between 1 and 120 installments.");
     if (!first) return fail("Pick the first due date.");
-  } else if (financed > 0.009) {
-    return fail(`${money(financed)} of the total is still uncovered — enter the rest as cash/bank or tick installments below.`);
   }
 
   // The row we save: items joined into one title, money rounded, mode stored.
@@ -311,6 +326,7 @@ async function savePurchase(e) {
     amount: total,
     cash_amount: cash,
     bank_amount: bank,
+    due_date: $("#purchase-due").value || null,
     notes: $("#purchase-notes").value.trim() || null,
     mode,
   };

@@ -70,9 +70,11 @@ const LIST_TABS = {
     hint: "payable-filter-hint", clear: "payable-filter-clear", info: "payable-list-info",
     date: (r) => r.entry_date, amount: (r) => num(r.amount),
     /* balance buckets: paid = nothing left, part = some but not all of the
-       amount, anything else = still owed (0.009 absorbs rounding dust) */
+       amount, overdue = past its due date with money still owing, anything
+       else = still owed (0.009 absorbs rounding dust) */
     extra: (r, v) =>
-      v === "paid" ? r.bal <= 0.009
+      v === "overdue" ? !!r.due_date && r.due_date < todayISO() && r.bal > 0.009
+      : v === "paid" ? r.bal <= 0.009
       : v === "part" ? r.bal > 0.009 && r.bal < num(r.amount) - 0.009
       : r.bal > 0.009,
     render: () => renderPayables(),

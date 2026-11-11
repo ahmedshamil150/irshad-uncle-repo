@@ -3,12 +3,14 @@
    -----------------------------------------------------------
    One modal for all four targets: sale, owe entry, purchase, loan.
    A loan that receives its last rupee is marked Returned automatically.
-   PROVIDES: openPaymentModal, savePayment
+   The sheet also lists the payment HISTORY of its target (newest first);
+   when nothing is left to pay it opens in history-only mode.
+   PROVIDES: openPaymentModal, savePayment, renderPayHistory
    ============================================================ */
 
 /* ============ payments ============ */
 // Prepares and opens the shared payment sheet for whichever target is receiving money.
-function openPaymentModal(type, id, context, max) {
+async function openPaymentModal(type, id, context, max) {
   // Remember which modal opened this one, so we can go back to it after saving.
   state.returnTo = $$(".modal").find((m) => !m.hidden)?.id || null;
   state.returnSaleId = type === "sale" ? id : null;
@@ -25,7 +27,52 @@ function openPaymentModal(type, id, context, max) {
   /* pre-fill the whole remaining balance: if he paid everything, just pick cash/bank and Save */
   $("#pay-amount").value = full > 0 ? String(full) : "";
   $("#pay-amount").placeholder = "Up to " + money(max);
+
+  /* nothing left to pay → the entry fields hide and the sheet becomes a
+     read-only history of what has already been paid */
+  const viewOnly = full <= 0.009;
+  $("#payment-fields").hidden = viewOnly;
+  $("#pay-save-btn").hidden = viewOnly;
+
+  // Load every payment recorded against this target (newest first) so the
+  // history at the bottom of the sheet is ready the moment it opens.
+  const col = type === "sale" ? "sale_id" : type === "payable" ? "payable_id"
+            : type === "purchase" ? "purchase_id" : "loan_id";
+  busy(true);
+  try {
+    const { data, error } = await sb
+      .from("payments").select("*").eq(col, id)
+      .order("paid_at", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    renderPayHistory(data || []);
+  } catch (err) {
+    renderPayHistory([]);
+    toast(err.message, true);
+  } finally {
+    busy(false);
+  }
   openModal("modal-payment");
+}
+
+// Draws the payment history lines: amount + method badge, then the date,
+// who handed the money over and any notes underneath.
+function renderPayHistory(pays) {
+  const total = pays.reduce((s, p) => s + num(p.amount), 0);
+  $("#pay-history-label").textContent = pays.length
+    ? `History — paid so far ${money(total)}`
+    : "History";
+  $("#pay-history").innerHTML = pays.length
+    ? pays
+        .map(
+          (p) => `<div class="pay-item">
+            <div class="pi-main"><b>${money(p.amount)}</b> <span class="badge badge-${p.method}">${p.method}</span>
+              <div class="pi-sub">${fmtDate(p.paid_at)}${p.payer ? " · given by " + esc(p.payer) : ""}${p.notes ? " · " + esc(p.notes) : ""}</div>
+            </div>
+          </div>`
+        )
+        .join("")
+    : `<div class="empty" style="padding:12px">No payments recorded yet.</div>`;
 }
 
 async function savePayment(e) {
@@ -36,6 +83,8 @@ async function savePayment(e) {
   const id = $("#pay-target-id").value;
   const amountN = parseAmount($("#pay-amount").value);
   const max = round2(num(state.payMax));
+  /* history-only mode (nothing left to pay): Enter must not try to save */
+  if (max <= 0.009) { closeModals(); return; }
 
   // Validate the amount: it must be a real number, above zero, and no more than what is still due.
   if (Number.isNaN(amountN)) { errEl.textContent = AMOUNT_HINT; errEl.hidden = false; return; }
@@ -48,6 +97,7 @@ async function savePayment(e) {
     paid_at: $("#pay-date").value || todayISO(),
     amount,
     method: $("#pay-method").value,
+    payer: $("#pay-payer").value.trim() || null,
     notes: $("#pay-notes").value.trim() || null,
     sale_id: type === "sale" ? id : null,
     payable_id: type === "payable" ? id : null,

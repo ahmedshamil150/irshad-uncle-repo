@@ -225,7 +225,7 @@ async function openSaleDetail(id) {
           .map(
             (p) => `<div class="pay-item">
             <div class="pi-main"><b>${money(p.amount)}</b> <span class="badge badge-${p.method}">${p.method}</span>
-              <div class="pi-sub">${fmtDate(p.paid_at)}${p.notes ? " · " + esc(p.notes) : ""}</div>
+              <div class="pi-sub">${fmtDate(p.paid_at)}${p.payer ? " · given by " + esc(p.payer) : ""}${p.notes ? " · " + esc(p.notes) : ""}</div>
             </div>
             ${canDel ? `<button type="button" class="icon-del" data-delpay="${p.id}" title="Delete payment">✕</button>` : ""}
           </div>`
