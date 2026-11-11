@@ -98,6 +98,17 @@ create table if not exists public.zakat (
   notes      text
 );
 
+-- Cash in: money received from people (machine repairs, contributions, etc.).
+create table if not exists public.cash_ins (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  entry_date date not null default current_date,
+  from_name  text not null,
+  amount     numeric(14,2) not null check (amount > 0),
+  reason     text,
+  notes      text
+);
+
 -- Payments: money in (from sales, loan returns) or out (to suppliers, on what we owe).
 create table if not exists public.payments (
   id          uuid primary key default gen_random_uuid(),
@@ -180,6 +191,7 @@ create index if not exists idx_expenses_date  on public.expenses (entry_date des
 create index if not exists idx_expenses_parent on public.expenses (parent_id);
 create index if not exists idx_purchases_date on public.purchases (entry_date desc);
 create index if not exists idx_zakat_date     on public.zakat (entry_date desc);
+create index if not exists idx_cash_ins_date  on public.cash_ins (entry_date desc);
 
 -- ============ updated_at TRIGGER ============
 create or replace function public.set_updated_at()
@@ -248,6 +260,7 @@ begin
     when 'loan_installments'     then array['loans']
     when 'expenses'              then array['expenses']
     when 'zakat'                 then array['zakat']
+    when 'cash_ins'              then array['cashin']
     else array[]::text[]
   end;
   foreach f in array v_flows loop
@@ -283,6 +296,7 @@ alter table public.personal_loans enable row level security;
 alter table public.expenses       enable row level security;
 alter table public.purchases      enable row level security;
 alter table public.zakat          enable row level security;
+alter table public.cash_ins       enable row level security;
 
 -- The policies below are (re)built for every table in this list — one read,
 -- one insert, one update and one delete policy each. Re-running is safe:
@@ -292,7 +306,7 @@ declare t text;
 begin
   foreach t in array array[
     'sales','installments','purchase_installments','loan_installments','payables',
-    'payments','salesmen','personal_loans','expenses','purchases','zakat'
+    'payments','salesmen','personal_loans','expenses','purchases','zakat','cash_ins'
   ] loop
     execute format('drop policy if exists "auth all"    on public.%I', t);
     execute format('drop policy if exists "flow select" on public.%I', t);

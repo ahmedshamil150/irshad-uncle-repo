@@ -70,6 +70,7 @@
       <button type="button" class="tab" data-view="loans">Loans</button>
       <button type="button" class="tab" data-view="expenses">Expenses</button>
       <button type="button" class="tab" data-view="zakat">Zakat</button>
+      <button type="button" class="tab" data-view="cashin">Cash in</button>
       <button type="button" class="tab" data-view="receivables">To receive</button>
       <button type="button" class="tab" data-view="payables">To pay</button>
     </nav>
@@ -374,6 +375,49 @@
         <div id="zakat-list" class="list"></div>
       </section>
 
+      <!-- ============ CASH IN (money received from people) ============ -->
+      <section id="view-cashin" class="view" hidden>
+        <!-- Total cash received in the selected range -->
+        <div id="cashin-summary" class="cards cards-tight"></div>
+        <!-- Search, ⚙ Filters, + New cash in -->
+        <div class="toolbar">
+          <input type="search" id="cashin-search" class="input" placeholder="Search who / reason / notes…" />
+          <button type="button" id="cashin-filter-btn" class="btn btn-ghost" aria-expanded="false" aria-controls="cashin-filters">
+            ⚙ Filters <span id="cashin-filter-count" class="chip-count" hidden>0</span>
+          </button>
+          <button type="button" id="new-cashin-btn" class="btn btn-primary">+ New cash in</button>
+        </div>
+        <!-- Hidden filter panel: dates + amount range -->
+        <div id="cashin-filters" class="filters" hidden>
+          <div class="filter-grid">
+            <label class="field"><span>From date</span><input type="date" id="cf-from" /></label>
+            <label class="field"><span>To date</span><input type="date" id="cf-to" /></label>
+            <label class="field"><span>Amount from (Rs)</span>
+              <input type="text" id="cf-min" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 50k" />
+            </label>
+            <label class="field"><span>Amount up to (Rs)</span>
+              <input type="text" id="cf-max" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 2l" />
+            </label>
+          </div>
+          <div class="segmented filter-quick" id="cf-quick">
+            <button type="button" class="seg active" data-range="all">All time</button>
+            <button type="button" class="seg" data-range="today">Today</button>
+            <button type="button" class="seg" data-range="yesterday">Yesterday</button>
+            <button type="button" class="seg" data-range="week">This week</button>
+            <button type="button" class="seg" data-range="month">This month</button>
+            <button type="button" class="seg" data-range="lastmonth">Last month</button>
+            <button type="button" class="seg" data-range="custom">Custom dates</button>
+          </div>
+          <div class="filter-foot">
+            <span id="cashin-filter-hint" class="filter-hint"></span>
+            <button type="button" id="cashin-filter-clear" class="btn btn-sm btn-ghost">Clear all filters</button>
+          </div>
+        </div>
+        <!-- Count/total line + the cash-in rows -->
+        <div id="cashin-list-info" class="list-info" hidden></div>
+        <div id="cashin-list" class="list"></div>
+      </section>
+
       <!-- ============ RECEIVABLES ============ -->
       <!-- "To receive": balances customers still owe on their sales -->
       <section id="view-receivables" class="view" hidden>
@@ -494,6 +538,9 @@
       </button>
       <button type="button" class="bnav" data-view="zakat">
         <span class="bnav-ico">☪</span><span>Zakat</span>
+      </button>
+      <button type="button" class="bnav" data-view="cashin" title="Cash in">
+        <span class="bnav-ico">＋</span><span>Cash in</span>
       </button>
       <button type="button" class="bnav" data-view="receivables" title="To receive">
         <span class="bnav-ico">↓</span><span>Receive</span>
@@ -1012,6 +1059,39 @@
     </div>
   </div>
 
+  <!-- Cash in form -->
+  <div id="modal-cashin" class="modal" hidden>
+    <div class="modal-dialog modal-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="cashin-modal-title">New cash in</h2>
+        <button type="button" class="modal-x" data-close>✕</button>
+      </div>
+      <form id="cashin-form" class="modal-body form">
+        <input type="hidden" id="cashin-id" />
+        <label class="field"><span>Date *</span>
+          <input type="date" id="cashin-date" required />
+        </label>
+        <label class="field"><span>Received from *</span>
+          <input type="text" id="cashin-from" required placeholder="e.g. Rahim (machine repair)" />
+        </label>
+        <label class="field"><span>Amount (Rs) *</span>
+          <input type="text" id="cashin-amount" class="amt" inputmode="decimal" autocomplete="off" placeholder="e.g. 50k" />
+        </label>
+        <label class="field"><span>Reason</span>
+          <input type="text" id="cashin-reason" placeholder="e.g. machine repair contribution" />
+        </label>
+        <label class="field"><span>Special notes</span>
+          <input type="text" id="cashin-notes" placeholder="Optional — anything worth remembering" />
+        </label>
+        <p id="cashin-form-error" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Sale detail -->
   <div id="modal-sale-detail" class="modal" hidden>
     <div class="modal-dialog modal-lg" role="dialog" aria-modal="true">
@@ -1142,6 +1222,7 @@
   <script src="js/expenses.js"></script>
   <script src="js/purchases.js"></script>
   <script src="js/zakat.js"></script>
+  <script src="js/cashin.js"></script>
   <script src="js/payments.js"></script>     <!-- shared payment sheet -->
   <script src="js/users.js"></script>        <!-- admin: users & per-flow access -->
   <script src="js/main.js"></script>         <!-- wires buttons, then boot() -->

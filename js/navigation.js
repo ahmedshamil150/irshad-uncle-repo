@@ -35,6 +35,8 @@ const state = {
   purchaseRows: [],
   zakatSearch: "",
   zakatRows: [],
+  cashinSearch: "",
+  cashInRows: [],
   paySearch: "",
   payRows: [],
   recOpen: [],
@@ -59,6 +61,7 @@ const loaders = {
   loans: () => loadLoans(),
   expenses: () => loadExpenses(),
   zakat: () => loadZakat(),
+  cashin: () => loadCashIn(),
   receivables: () => loadReceivables(),
   payables: () => loadPayables(),
 };
@@ -77,6 +80,7 @@ const WRITE_BTNS = {
   loans:      ["#new-loan-btn"],
   expenses:   ["#new-expense-btn"],
   zakat:      ["#new-zakat-btn"],
+  cashin:     ["#new-cashin-btn"],
   payables:   ["#new-payable-btn"],
 };
 

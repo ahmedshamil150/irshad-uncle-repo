@@ -220,6 +220,14 @@ function bindEvents() {
     renderZakat();
   });
 
+  /* cash in */
+  $("#new-cashin-btn").addEventListener("click", () => openCashInForm());
+  $("#cashin-form").addEventListener("submit", saveCashIn);
+  $("#cashin-search").addEventListener("input", (e) => {
+    state.cashinSearch = e.target.value;
+    renderCashIn();
+  });
+
   /* payables / payment forms */
   $("#new-payable-btn").addEventListener("click", () => openPayableForm());
   $("#payable-form").addEventListener("submit", savePayable);

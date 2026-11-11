@@ -23,6 +23,7 @@ const FLOW_LABELS = {
   expenses: "Expenses",
   purchases: "Purchases",
   zakat: "Zakat",
+  cashin: "Cash in",
 };
 
 /* The rows currently in the list, so a tap can open one for editing. */

@@ -185,7 +185,7 @@ const oneLine = (s) => String(s || "").replace(/\s*\n\s*/g, " · ");
    builds its permission rows from this list (dashboard has no rows to delete,
    so it never gets a "delete" tick). */
 const FLOW_LIST = ["dashboard", "sales", "receivables", "payables", "loans",
-                   "expenses", "purchases", "zakat"];
+                   "expenses", "purchases", "zakat", "cashin"];
 
 /* May this user do `need` ("read" or "write") on `flow`?
    "read" is satisfied by read OR write access; "write" needs write access. */

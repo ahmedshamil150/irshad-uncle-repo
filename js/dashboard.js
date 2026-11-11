@@ -23,9 +23,9 @@ function applyRange(q, col) {
 async function loadDashboard() {
   busy(true);
   try {
-    // Fetch everything in parallel. Only sales/zakat/purchases are limited to the chosen dates;
+    // Fetch everything in parallel. Only sales/zakat/purchases/cash-ins are limited to the chosen dates;
     // payments and payables are read for all time so every balance stays complete.
-    const [salesR, lightR, paysR, payablesR, zakatR, purchR, purchOwedR] = await Promise.all([
+    const [salesR, lightR, paysR, payablesR, zakatR, purchR, purchOwedR, cashInR] = await Promise.all([
       applyRange(sb.from("sales").select("*"), "sale_date"),
       sb.from("sales").select("id,total_amount,cash_amount,bank_amount,adjustment_amount,loan_amount"),
       sb.from("payments").select("sale_id,payable_id,purchase_id,amount"),
@@ -34,8 +34,10 @@ async function loadDashboard() {
       applyRange(sb.from("purchases").select("amount"), "entry_date"),
       /* unpaid purchase balances — same money the To pay tab lists (all-time, like payables) */
       sb.from("purchases").select("id,amount,cash_amount,bank_amount"),
+      /* cash received from people — feeds the Total credit card */
+      applyRange(sb.from("cash_ins").select("amount"), "entry_date"),
     ]);
-    const errs = [salesR, lightR, paysR, payablesR, zakatR, purchR, purchOwedR].find((r) => r.error);
+    const errs = [salesR, lightR, paysR, payablesR, zakatR, purchR, purchOwedR, cashInR].find((r) => r.error);
     if (errs) throw errs.error;
 
     const sales = salesR.data || [];
@@ -45,6 +47,7 @@ async function loadDashboard() {
     const zakatRows = zakatR.data || [];
     const purchRows = purchR.data || [];
     const purchOwed = purchOwedR.data || [];
+    const cashInRows = cashInR.data || [];
 
     // Add up the sales in the range, broken down by how each one was paid for.
     const totalSale = sales.reduce((s, r) => s + num(r.total_amount), 0);
@@ -87,6 +90,11 @@ async function loadDashboard() {
     // flow lists here mirror the read rules in schema.sql).
     const cards = [
       { flows: ["sales"], label: "Total sale", value: money(totalSale), tone: "brand", sub: rangeLabel() },
+      /* Total credit = sale money + cash received from people (only the parts
+         this user may read are added up — see core.js can) */
+      { flows: ["sales", "cashin"], label: "Total credit",
+        value: money((can("sales", "read") ? totalSale : 0) + (can("cashin", "read") ? cashInRows.reduce((s, r) => s + num(r.amount), 0) : 0)),
+        tone: "green", sub: rangeLabel() },
       { flows: ["sales"], label: "Cash", value: money(cash), tone: "green" },
       { flows: ["sales"], label: "Bank", value: money(bank), tone: "brand" },
       ...(adjustment > 0 ? [{ flows: ["sales"], label: "Adjustment", value: money(adjustment), tone: "brand", sub: "Old machines taken in trade" }] : []),

@@ -75,6 +75,7 @@ js/loans.js          ← loans screen
 js/expenses.js       ← expenses screen
 js/purchases.js      ← purchases screen
 js/zakat.js          ← zakat screen
+js/cashin.js         ← cash-in screen (money received from people)
 js/payments.js       ← shared payment sheet
 js/users.js          ← admin sheet: users list + per-flow access grants
 js/main.js           ← wires buttons → functions, then calls boot()  ← MUST BE LAST
@@ -143,8 +144,8 @@ any screen. `login()` submits the form.
 
 ### The shared engines (used by several screens)
 
-**`js/filters.js`** — one ⚙ Filters engine for six tabs (purchases, loans,
-expenses, zakat, To receive, To pay). `LIST_TABS` is a config table saying which
+**`js/filters.js`** — one ⚙ Filters engine for seven tabs (purchases, loans,
+expenses, zakat, cash in, To receive, To pay). `LIST_TABS` is a config table saying which
 button/panel/search-box belongs to which tab, and `applyListFilters()`,
 `listQuickRange()`, `clearListFilters()` do the work. Adding a filter panel to a
 new tab = one entry in `LIST_TABS`. (Sales has its own panel, inside `sales.js`.)
@@ -181,6 +182,7 @@ and refuse to run for non-admins.
 | `expenses.js` | Expenses | Envelope cards with the spends recorded inside them: parent/child rows (`expenseTree`), the card's detail sheet with **Given / Spent / Left** (`openExpenseDetail`), the shared form in card or child mode (`openExpenseForm`, hidden `#expense-parent` → `parent_id` on save), and per-row ownership gates (`canEditRow` / `canDelRow`). |
 | `purchases.js` | Purchases | Things bought (batch statement or local item picker), cash/bank/installment payments, balance + status badge (`savePurchase`, `syncPurchaseForm`). |
 | `zakat.js` | Zakat | Simple list + form, same pattern as expenses. |
+| `cashin.js` | Cash in | Cash received from people: same list + form pattern as zakat, plus a *Received from* and *Reason* field (`loadCashIn`, `renderCashIn`, `openCashInForm`, `saveCashIn`). |
 
 **`js/main.js`** — the wiring diagram. `bindEvents()` maps every button, search
 box, form `submit` and ⚙ panel in `index.html` to a function in the files above.

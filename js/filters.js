@@ -49,6 +49,13 @@ const LIST_TABS = {
     date: (r) => r.entry_date, amount: (r) => num(r.amount),
     render: () => renderZakat(),
   },
+  cashin: {
+    prefix: "cf", searchKey: "cashinSearch", searchId: "cashin-search",
+    btn: "cashin-filter-btn", panel: "cashin-filters", badge: "cashin-filter-count",
+    hint: "cashin-filter-hint", clear: "cashin-filter-clear", info: "cashin-list-info",
+    date: (r) => r.entry_date, amount: (r) => num(r.amount),
+    render: () => renderCashIn(),
+  },
   receivables: {
     prefix: "rf", searchKey: "recSearch", searchId: "receivable-search",
     btn: "receivable-filter-btn", panel: "receivable-filters", badge: "receivable-filter-count",
