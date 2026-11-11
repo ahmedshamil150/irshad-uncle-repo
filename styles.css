@@ -236,6 +236,12 @@ h1, h2, h3 { margin: 0; }
 .stat.tone-amber .stat-value { color: var(--amber); }
 .stat.tone-brand .stat-value { color: var(--brand); }
 .stat.tone-violet .stat-value { color: var(--violet); }
+/* Purchases: the summary row holds tappable supplier cards (a real <button>,
+   styled like the other stat cards); the picked one gets a brand ring */
+.supplier-card { display: block; width: 100%; border: 0; font: inherit; text-align: left; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.supplier-card:hover { filter: brightness(.985); }
+.supplier-card.on { box-shadow: inset 0 0 0 2px var(--brand); }
+.supplier-card:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 /* Filter bar */
 .filterbar { margin-bottom: 14px; }

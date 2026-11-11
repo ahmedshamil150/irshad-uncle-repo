@@ -33,6 +33,8 @@ const state = {
   expenseRows: [],
   purchaseSearch: "",
   purchaseRows: [],
+  /* the supplier card picked on the Purchases summary row (null = all) */
+  purchaseSupplier: null,
   zakatSearch: "",
   zakatRows: [],
   cashinSearch: "",

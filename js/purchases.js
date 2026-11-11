@@ -72,24 +72,47 @@ async function loadPurchases() {
   }
 }
 
-// Rebuild the summary cards, the filtered purchase list, and the buttons on each row.
+// Rebuild the supplier cards, the filtered purchase list, and the buttons on each row.
 function renderPurchases() {
   const rows = state.purchaseRows;
-  const today = todayISO();
-  const month = today.slice(0, 7);
-  const year = today.slice(0, 4);
-  const inMonth = rows.filter((r) => String(r.entry_date).startsWith(month));
-  const inYear = rows.filter((r) => String(r.entry_date).startsWith(year));
   const sum = (list) => list.reduce((s, r) => s + num(r.amount), 0);
 
-  // Summary cards: totals and counts for this month, this year, and all time.
-  $("#purchase-summary").innerHTML = `
-    <div class="stat tone-amber"><div class="stat-label">This month</div><div class="stat-value">${money(sum(inMonth))}</div><div class="stat-sub">${inMonth.length} purchase${inMonth.length === 1 ? "" : "s"}</div></div>
-    <div class="stat tone-brand"><div class="stat-label">This year</div><div class="stat-value">${money(sum(inYear))}</div><div class="stat-sub">${inYear.length} purchase${inYear.length === 1 ? "" : "s"}</div></div>
-    <div class="stat tone-red"><div class="stat-label">All time</div><div class="stat-value">${money(sum(rows))}</div><div class="stat-sub">${rows.length} recorded</div></div>`;
+  /* Supplier cards instead of the old period totals: one card per supplier
+     ever entered (plus "All suppliers"), each showing what was bought from
+     them — tap one and the list below shows only that supplier's purchases,
+     tap it again (or "All") to go back to everything. */
+  const bySup = new Map();
+  for (const r of rows) {
+    const name = String(r.supplier || "").trim();
+    if (!name) continue;
+    const b = bySup.get(name) || { name, n: 0, total: 0 };
+    b.n += 1;
+    b.total += num(r.amount);
+    bySup.set(name, b);
+  }
+  const sups = [...bySup.values()].sort((a, b) => b.total - a.total);
+  const sel = state.purchaseSupplier || "";
+  const card = (label, value, count, sup, tone, on) => `
+    <button type="button" class="stat supplier-card ${tone}${on ? " on" : ""}" data-sup="${esc(sup)}">
+      <div class="stat-label">${esc(label)}</div>
+      <div class="stat-value">${money(value)}</div>
+      <div class="stat-sub">${count} purchase${count === 1 ? "" : "s"}</div>
+    </button>`;
+  $("#purchase-summary").innerHTML = rows.length
+    ? card("All suppliers", sum(rows), rows.length, "", "tone-red", !sel) +
+      sups.map((s) => card(s.name, s.total, s.n, s.name, "tone-amber", sel === s.name)).join("")
+    : "";
+  $$("#purchase-summary .supplier-card").forEach((el) =>
+    el.addEventListener("click", () => {
+      const name = el.dataset.sup || null;
+      /* "All" or the already-picked supplier clears the pick, otherwise pick */
+      state.purchaseSupplier = !name || state.purchaseSupplier === name ? null : name;
+      renderPurchases();
+    })
+  );
 
   // Narrow the rows by the search box (title, supplier, notes), then by the
-  // saved list filters (date range, etc.).
+  // picked supplier card, then by the saved list filters (dates, etc.).
   const q = state.purchaseSearch.toLowerCase();
   const searched = rows.filter(
     (r) =>
@@ -98,7 +121,16 @@ function renderPurchases() {
       (r.supplier || "").toLowerCase().includes(q) ||
       (r.notes || "").toLowerCase().includes(q)
   );
-  const shown = applyListFilters("purchases", searched, rows);
+  const sup = state.purchaseSupplier;
+  const forSup = sup ? searched.filter((r) => String(r.supplier || "").trim() === sup) : searched;
+  const shown = applyListFilters("purchases", forSup, rows);
+  /* with a supplier picked, the "Showing …" line names them even when no ⚙
+     filter is on (applyListFilters hides it otherwise) */
+  if (sup) {
+    const info = $("#purchase-list-info");
+    info.hidden = false;
+    info.innerHTML = `Showing <b>${shown.length}</b> of ${rows.length} · ${money(sum(shown))} total · from <b>${esc(sup)}</b>`;
+  }
 
   // What may THIS user do here (see core.js): + Pay and Edit need write
   // access, ✕ needs the flow's delete tick, and a plain tap opens the
@@ -130,7 +162,9 @@ function renderPurchases() {
         )
         .join("")
     : `<div class="empty">${
-        listFiltersActive("purchases") ? "No purchases match these filters." : "No purchases yet."
+        listFiltersActive("purchases") || state.purchaseSupplier
+          ? "No purchases match these filters."
+          : "No purchases yet."
       }</div>`;
 
   // Wire each row's buttons: pay the remaining balance, open the edit form,

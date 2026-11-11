@@ -20,6 +20,8 @@ const LIST_TABS = {
     hint: "purchase-filter-hint", clear: "purchase-filter-clear", info: "purchase-list-info",
     date: (r) => r.entry_date, amount: (r) => num(r.amount),
     extra: (r, v) => (r.mode || "batch") === v,      /* batch / local */
+    /* the supplier card picked on the summary row acts like a filter too */
+    onClear: () => { state.purchaseSupplier = null; },
     render: () => renderPurchases(),
   },
   loans: {
@@ -182,6 +184,7 @@ function clearListFilters(tab) {
   [p + "-from", p + "-to", p + "-min", p + "-max", p + "-extra"]
     .forEach((id) => { const el = $("#" + id); if (el) el.value = ""; });
   $$("#" + p + "-quick .seg").forEach((b) => b.classList.toggle("active", b.dataset.range === "all"));
+  if (cfg.onClear) cfg.onClear();     /* tab-specific extras (e.g. the supplier pick) */
   cfg.render();
   toast("Filters cleared");
 }
