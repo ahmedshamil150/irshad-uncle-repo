@@ -85,22 +85,26 @@ function renderPurchases() {
   for (const r of rows) {
     const name = String(r.supplier || "").trim();
     if (!name) continue;
-    const b = bySup.get(name) || { name, n: 0, total: 0 };
+    const b = bySup.get(name) || { name, n: 0, total: 0, left: 0 };
     b.n += 1;
     b.total += num(r.amount);
+    b.left += num(r.bal);
     bySup.set(name, b);
   }
   const sups = [...bySup.values()].sort((a, b) => b.total - a.total);
   const sel = state.purchaseSupplier || "";
-  const card = (label, value, count, sup, tone, on) => `
+  const allLeft = round2(rows.reduce((s, r) => s + num(r.bal), 0));
+  const card = (label, totalVal, leftVal, count, sup, tone, on) => `
     <button type="button" class="stat supplier-card ${tone}${on ? " on" : ""}" data-sup="${esc(sup)}">
       <div class="stat-label">${esc(label)}</div>
-      <div class="stat-value">${money(value)}</div>
-      <div class="stat-sub">${count} purchase${count === 1 ? "" : "s"}</div>
+      <div class="stat-value">${money(totalVal)} <span style="font-size:12px;font-weight:600;color:var(--muted)">total</span></div>
+      <div class="stat-sub">
+        ${leftVal > 0.009 ? `<b class="bal-due">${money(leftVal)} to pay</b>` : '<b class="bal-ok">Paid in full</b>'} · ${count} purchase${count === 1 ? "" : "s"}
+      </div>
     </button>`;
   $("#purchase-summary").innerHTML = rows.length
-    ? card("All suppliers", sum(rows), rows.length, "", "tone-red", !sel) +
-      sups.map((s) => card(s.name, s.total, s.n, s.name, "tone-amber", sel === s.name)).join("")
+    ? card("All suppliers", sum(rows), allLeft, rows.length, "", "tone-red", !sel) +
+      sups.map((s) => card(s.name, s.total, s.left, s.n, s.name, "tone-amber", sel === s.name)).join("")
     : "";
   $$("#purchase-summary .supplier-card").forEach((el) =>
     el.addEventListener("click", () => {
@@ -129,7 +133,9 @@ function renderPurchases() {
   if (sup) {
     const info = $("#purchase-list-info");
     info.hidden = false;
-    info.innerHTML = `Showing <b>${shown.length}</b> of ${rows.length} · ${money(sum(shown))} total · from <b>${esc(sup)}</b>`;
+    const supTotal = sum(shown);
+    const supLeft = round2(shown.reduce((s, r) => s + num(r.bal), 0));
+    info.innerHTML = `Showing <b>${shown.length}</b> of ${rows.length} from <b>${esc(sup)}</b> · <b>${money(supTotal)}</b> total · <b class="${supLeft > 0.009 ? "bal-due" : "bal-ok"}">${money(supLeft)} to pay</b>`;
   }
 
   // What may THIS user do here (see core.js): + Pay and Edit need write
