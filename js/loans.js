@@ -62,9 +62,18 @@ async function loadLoans() {
 }
 
 /* Redraw the loans screen: person suggestions, summary cards and the row list. */
+function syncLoanVisibilityBtn() {
+  const btn = $("#loan-visibility-btn");
+  if (!btn) return;
+  const on = !!state.showLoanAmounts;
+  btn.textContent = on ? "🙈 Hide amounts" : "👁 Show amounts";
+  btn.classList.toggle("is-on", on);
+}
+
 function renderLoans() {
     const rows = state.loanRows;
     const today = todayISO();
+    syncLoanVisibilityBtn();
 
     /* unique people already lent to — powers the search box suggestions */
     $("#loan-names").innerHTML = [...new Set(rows.map((r) => r.person))]
@@ -80,11 +89,17 @@ function renderLoans() {
     const allTotal = rows.reduce((s, r) => s + num(r.amount), 0);
     const lateTotal = late.reduce((s, r) => s + Math.max(r.left, 0), 0);
 
+    const showAmt = !!state.showLoanAmounts;
+    const mask = (val) =>
+      showAmt
+        ? money(val)
+        : `<span class="loan-masked" data-real="${esc(money(val))}" title="Tap to reveal">••••••</span>`;
+
     /* three summary cards: still to get back, past the due date, total given */
     $("#loan-summary").innerHTML = `
-      <div class="stat tone-red"><div class="stat-label">Still to get back</div><div class="stat-value">${money(outTotal)}</div><div class="stat-sub">${open.length} loan${open.length === 1 ? "" : "s"} out</div></div>
-      <div class="stat tone-amber"><div class="stat-label">Past the due date</div><div class="stat-value">${late.length}</div><div class="stat-sub">${money(lateTotal)} late</div></div>
-      <div class="stat tone-brand"><div class="stat-label">Given out (all)</div><div class="stat-value">${money(allTotal)}</div><div class="stat-sub">${back.length} returned</div></div>`;
+      <div class="stat tone-red"><div class="stat-label">Still to get back</div><div class="stat-value">${mask(outTotal)}</div><div class="stat-sub">${open.length} loan${open.length === 1 ? "" : "s"} out</div></div>
+      <div class="stat tone-amber"><div class="stat-label">Past the due date</div><div class="stat-value">${late.length}</div><div class="stat-sub">${mask(lateTotal)} late</div></div>
+      <div class="stat tone-brand"><div class="stat-label">Given out (all)</div><div class="stat-value">${mask(allTotal)}</div><div class="stat-sub">${back.length} returned</div></div>`;
 
     /* search box + ⚙ filters decide which rows are actually shown */
     const q = state.loanSearch.toLowerCase();
@@ -114,9 +129,9 @@ function renderLoans() {
             </div>
             <div class="row-right">
               ${isBack || !hasInst
-                ? `<div class="row-amount ${isBack ? "" : "bal-due"}">${money(r.amount)}</div>
+                ? `<div class="row-amount ${isBack ? "" : "bal-due"}">${mask(r.amount)}</div>
                    <div class="row-bal" style="color:var(--muted)">${isBack ? "returned" : "to get back"}</div>`
-                : `<div class="row-amount ${r.left > 0.009 ? "bal-due" : ""}">${money(Math.max(r.left, 0))}</div>
+                : `<div class="row-amount ${r.left > 0.009 ? "bal-due" : ""}">${mask(Math.max(r.left, 0))}</div>
                    <div class="row-bal" style="color:var(--muted)">left · ${r.instPaid}/${r.instCount} back</div>`}
             </div>
             ${canWrite || canDel ? `<div class="row-actions">
@@ -135,12 +150,19 @@ function renderLoans() {
     $$("#loan-list .row").forEach((el) => {
       const r = rows.find((x) => x.id === el.dataset.id);
       el.addEventListener("click", (e) => {
+        const masked = e.target.closest(".loan-masked");
+        if (masked) {
+          e.stopPropagation();
+          masked.textContent = masked.dataset.real;
+          masked.classList.remove("loan-masked");
+          return;
+        }
         const act = e.target.closest("[data-act]")?.dataset.act;
         if (act === "back") setLoanReturned(r, true);
         else if (act === "undo") setLoanReturned(r, false);
         else if (act === "edit") openLoanForm(r);
         else if (act === "del")
-          askConfirm("Delete this loan?", `Delete the ${money(r.amount)} loan to ${r.person}?${r.instCount ? " Its schedule and returns will also be removed." : ""}`, async () => {
+          askConfirm("Delete this loan?", `Delete the loan to ${r.person}?${r.instCount ? " Its schedule and returns will also be removed." : ""}`, async () => {
             busy(true);
             const { error } = await sb.from("personal_loans").delete().eq("id", r.id);
             busy(false);
@@ -154,6 +176,16 @@ function renderLoans() {
         else if (canWrite) openLoanForm(r);
       });
     });
+
+    /* tapping any masked amount in summary cards reveals it */
+    $$("#loan-summary .loan-masked").forEach((m) =>
+      m.addEventListener("click", (e) => {
+        e.stopPropagation();
+        m.textContent = m.dataset.real;
+        m.classList.remove("loan-masked");
+      })
+    );
+}
 }
 
 /* Flip a loan between "returned" and "still to get back" (sets/clears returned_at). */
@@ -326,6 +358,12 @@ async function openLoanDetail(id) {
     const today = todayISO();
 
     /* installment statuses: returns allocate FIFO over the schedule */
+    const showAmt = !!state.showLoanAmounts;
+    const mask = (val) =>
+      showAmt
+        ? money(val)
+        : `<span class="loan-masked" data-real="${esc(money(val))}" title="Tap to reveal">••••••</span>`;
+
     let unpaidBefore = 0, nextDue = null, overdueInst = false;   /* unpaidBefore walks the schedule; nextDue = first unpaid due date */
     const instHtml = inst
       .map((row) => {
@@ -342,7 +380,7 @@ async function openLoanDetail(id) {
         return `<div class="inst-row ${status === "overdue" ? "is-overdue" : status === "paid" ? "is-paid" : ""}">
           <span class="inst-no">#${row.installment_no}</span>
           <span class="inst-due">${fmtDate(row.due_date)}</span>
-          <span class="inst-amt">${money(amount)}</span>
+          <span class="inst-amt">${mask(amount)}</span>
           <span class="badge badge-${status}">${status}</span>
         </div>`;
       })
@@ -362,7 +400,7 @@ async function openLoanDetail(id) {
       ? pays
           .map(
             (p) => `<div class="pay-item">
-            <div class="pi-main"><b>${money(p.amount)}</b> <span class="badge badge-${p.method}">${p.method}</span>
+            <div class="pi-main"><b>${mask(p.amount)}</b> <span class="badge badge-${p.method}">${p.method}</span>
               <div class="pi-sub">${fmtDate(p.paid_at)}${p.notes ? " · " + esc(p.notes) : ""}</div>
             </div>
             ${canDel ? `<button type="button" class="icon-del" data-delpay="${p.id}" title="Delete return">✕</button>` : ""}
@@ -379,30 +417,48 @@ async function openLoanDetail(id) {
       <div class="row-sub" style="margin-bottom:12px">Given ${fmtDate(loan.loan_date)}${loan.due_date ? " · Back by " + fmtDate(loan.due_date) : ""}${loan.notes ? " · " + esc(loan.notes) : ""}</div>
 
       <div class="detail-grid">
-        <div class="stat tone-brand"><div class="stat-label">Given</div><div class="stat-value">${money(loan.amount)}</div></div>
-        <div class="stat tone-violet"><div class="stat-label">Received back</div><div class="stat-value">${money(received)}</div>
+        <div class="stat tone-brand"><div class="stat-label">Given</div><div class="stat-value">${mask(loan.amount)}</div></div>
+        <div class="stat tone-violet"><div class="stat-label">Received back</div><div class="stat-value">${mask(received)}</div>
           <div class="stat-sub">${pays.length} return${pays.length === 1 ? "" : "s"}</div></div>
         <div class="stat ${left > 0.009 ? "tone-red" : "tone-green"}"><div class="stat-label">Left to get back</div>
-          <div class="stat-value">${money(Math.max(left, 0))}</div></div>
+          <div class="stat-value">${mask(Math.max(left, 0))}</div></div>
         <div class="stat ${nextDue && nextDue < today ? "tone-red" : "tone-amber"}"><div class="stat-label">Next due</div>
           <div class="stat-value">${nextDue ? fmtDate(nextDue) : left > 0.009 ? "—" : "All in"}</div>
           ${nextDue || left > 0.009 ? "" : `<div class="stat-sub">every installment received</div>`}</div>
       </div>
 
-      ${canWrite || canDel ? `<div class="detail-actions">
+      <div class="detail-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="loan-detail-vis-btn">${showAmt ? "🙈 Hide amounts" : "👁 Show amounts"}</button>
         ${canWrite ? `<button type="button" class="btn btn-primary btn-sm" id="loan-detail-return-btn">+ Record return</button>
         ${loan.returned_at
           ? `<button type="button" class="btn btn-ghost btn-sm" id="loan-detail-back-btn">↩ Not back yet</button>`
           : `<button type="button" class="btn btn-ghost btn-sm" id="loan-detail-back-btn">✓ Returned</button>`}
         <button type="button" class="btn btn-ghost btn-sm" id="loan-detail-edit-btn">Edit</button>` : ""}
         ${canDel ? `<button type="button" class="btn btn-danger btn-sm" id="loan-detail-del-btn">Delete</button>` : ""}
-      </div>` : ""}
+      </div>
 
       ${inst.length ? `<div class="section-label">Installment schedule</div>${instHtml}` : ""}
       <div class="section-label">Returns received</div>
       ${paysHtml}`;
 
     /* wire the sheet's buttons: record a return, toggle returned, edit, delete */
+    const visBtn = $("#loan-detail-vis-btn");
+    if (visBtn) {
+      visBtn.onclick = () => {
+        state.showLoanAmounts = !state.showLoanAmounts;
+        syncLoanVisibilityBtn();
+        renderLoans();
+        openLoanDetail(loan.id);
+      };
+    }
+    $$("#loan-detail-body .loan-masked").forEach((m) =>
+      m.addEventListener("click", (e) => {
+        e.stopPropagation();
+        m.textContent = m.dataset.real;
+        m.classList.remove("loan-masked");
+      })
+    );
+
     if (canWrite) {
       $("#loan-detail-return-btn").onclick = () => {
         if (left <= 0.009) return toast("The full amount is already back.", true);

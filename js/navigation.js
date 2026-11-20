@@ -29,6 +29,7 @@ const state = {
   recSearch: "",
   loanSearch: "",
   loanRows: [],
+  showLoanAmounts: false,
   expSearch: "",
   expenseRows: [],
   purchaseSearch: "",

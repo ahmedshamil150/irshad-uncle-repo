@@ -138,9 +138,13 @@ function applyListFilters(tab, searched, all) {
   const active = listFiltersActive(tab);
   info.hidden = !active;
   if (active) {
+    const totalVal = shown.reduce((s, r) => s + cfg.amount(r), 0);
+    const totalStr = tab === "loans" && !state.showLoanAmounts
+      ? `<span class="loan-masked" data-real="${esc(money(totalVal))}" title="Tap to reveal">••••••</span>`
+      : money(totalVal);
     info.innerHTML =
       `Showing <b>${shown.length}</b> of ${all.length} · ` +
-      `${money(shown.reduce((s, r) => s + cfg.amount(r), 0))} total`;
+      `${totalStr} total`;
   }
   return shown;
 }

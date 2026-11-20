@@ -167,6 +167,11 @@ function bindEvents() {
 
   /* loans */
   $("#new-loan-btn").addEventListener("click", () => openLoanForm());
+  $("#loan-visibility-btn")?.addEventListener("click", () => {
+    state.showLoanAmounts = !state.showLoanAmounts;
+    syncLoanVisibilityBtn();
+    renderLoans();
+  });
   $("#loan-form").addEventListener("submit", saveLoan);
   $("#loan-search").addEventListener("input", (e) => {
     state.loanSearch = e.target.value;

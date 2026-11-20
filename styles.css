@@ -327,6 +327,9 @@ h1, h2, h3 { margin: 0; }
 .row-bal { font-size: 12px; margin-top: 3px; font-weight: 600; }
 .bal-due { color: var(--red); }
 .bal-ok { color: var(--green); }
+/* loan amounts hidden by default: tap to peek, or toggle from toolbar */
+.loan-masked { display: inline-block; letter-spacing: 2px; cursor: pointer; user-select: none; opacity: .85; }
+.loan-masked:hover { opacity: 1; text-decoration: underline dotted; }
 /* Combined block (purchases/sales the user chose to combine): a tinted
    header holding the combined total + its action buttons, with the
    individual entries nested underneath */
