@@ -186,7 +186,6 @@ function renderLoans() {
       })
     );
 }
-}
 
 /* Flip a loan between "returned" and "still to get back" (sets/clears returned_at). */
 async function setLoanReturned(r, returned) {
