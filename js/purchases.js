@@ -138,12 +138,29 @@ function renderPurchases() {
   const canWrite = can("purchases", "write");
   const canDel = canDelete("purchases");
 
+  /* Entries the user confirmed as one group (same day + same supplier) draw
+     as a block: a header with the COMBINED total, the individual purchases
+     nested below it. The header pays the whole total; a row pays itself. */
+  const groupAll = new Map(); // group id → every member (full list, for totals)
+  for (const r of rows) if (r.group_id) {
+    const g = groupAll.get(r.group_id);
+    if (g) g.push(r); else groupAll.set(r.group_id, [r]);
+  }
+  const shownIds = new Set(shown.map((r) => r.id));
+  const items = [];   // { solo } | { gid, all } — list order (newest first)
+  const seen = new Set();
+  for (const r of rows) {
+    if (r.group_id) {
+      if (seen.has(r.group_id)) continue;
+      seen.add(r.group_id);
+      const all = groupAll.get(r.group_id);
+      if (all.some((m) => shownIds.has(m.id))) items.push({ gid: r.group_id, all });
+    } else if (shownIds.has(r.id)) items.push({ solo: r });
+  }
+
   // One HTML row per purchase: title + status badge, date/supplier/installment
-  // progress, amount + balance, then the action buttons (or an empty message).
-  $("#purchase-list").innerHTML = shown.length
-    ? shown
-        .map(
-          (r) => `<div class="row" data-id="${r.id}">
+  // progress, amount + balance, then the action buttons.
+  const rowHTML = (r) => `<div class="row" data-id="${r.id}">
             <div class="row-main">
               <div class="row-title">${esc(oneLine(r.title))}${r.status ? `<span class="badge badge-${r.status}">${r.status}</span>` : ""}</div>
               <div class="row-sub">${fmtDate(r.entry_date)}${r.supplier ? " · " + esc(r.supplier) : ""}${r.instCount ? ` · ${r.instPaid}/${r.instCount} installments paid` : ""}${r.due_date ? ` · due ${fmtDate(r.due_date)}` : ""}${r.payCount ? ` · ${r.payCount} payment${r.payCount === 1 ? "" : "s"}` : ""}${r.notes ? " · " + esc(r.notes) : ""}</div>
@@ -158,9 +175,39 @@ function renderPurchases() {
               ${canWrite ? `<button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>` : ""}
               ${canDel ? `<button type="button" class="btn btn-sm btn-ghost" data-act="del">✕</button>` : ""}
             </div>` : ""}
-          </div>`
-        )
-        .join("")
+          </div>`;
+
+  // The combined block's header: total of ALL its purchases + what is left
+  // across them, then the members that pass the current filters underneath.
+  const groupHTML = (gid, all) => {
+    const total = sum(all);
+    const left = round2(all.reduce((s, r) => s + num(r.bal), 0));
+    const payN = all.reduce((s, r) => s + (r.payCount || 0), 0);
+    const date = all.map((r) => r.entry_date).sort().pop();   // ISO dates sort chronologically
+    const who = all[0].supplier || "Combined purchase";
+    const members = all.filter((m) => shownIds.has(m.id)).map(rowHTML).join("");
+    return `<div class="row-group" data-group="${gid}">
+      <div class="grp-head">
+        <div class="row-main">
+          <div class="row-title">${esc(who)} <span class="badge badge-partial">${all.length} combined</span></div>
+          <div class="row-sub">${fmtDate(date)} · combined total${payN ? ` · ${payN} payment${payN === 1 ? "" : "s"}` : ""}</div>
+        </div>
+        <div class="row-right">
+          <div class="row-amount ${left > 0.009 ? "bal-due" : ""}">${money(total)}</div>
+          <div class="row-bal" style="color:var(--muted)">${left > 0.009 ? money(left) + " left" : "bought"}</div>
+        </div>
+        ${canWrite ? `<div class="row-actions">
+          ${left > 0.009 ? `<button type="button" class="btn btn-sm btn-primary" data-grpact="pay">+ Pay total</button>` : ""}
+          ${left <= 0.009 && payN > 0 ? `<button type="button" class="btn btn-sm btn-ghost" data-grpact="hist">History</button>` : ""}
+          <button type="button" class="btn btn-sm btn-ghost" data-grpact="sep">Separate</button>
+        </div>` : ""}
+      </div>
+      <div class="grp-members">${members}</div>
+    </div>`;
+  };
+
+  $("#purchase-list").innerHTML = items.length
+    ? items.map((it) => (it.solo ? rowHTML(it.solo) : groupHTML(it.gid, it.all))).join("")
     : `<div class="empty">${
         listFiltersActive("purchases") || state.purchaseSupplier
           ? "No purchases match these filters."
@@ -187,6 +234,38 @@ function renderPurchases() {
           loadPurchases();
         });
       else if (canWrite) openPurchaseForm(r);   /* read-only rows don't open the form */
+    });
+  });
+
+  // Wire the combined-block headers: pay the whole total (the sheet splits it
+  // across the members), look back at the combined history, or separate them.
+  $$("#purchase-list .row-group").forEach((el) => {
+    const gid = el.dataset.group;
+    const all = groupAll.get(gid) || [];
+    const left = round2(all.reduce((s, r) => s + num(r.bal), 0));
+    const ids = all.map((m) => m.id);
+    const who = all[0]?.supplier || "Combined purchase";
+    el.querySelector(".grp-head").addEventListener("click", (e) => {
+      const act = e.target.closest("[data-grpact]")?.dataset.grpact;
+      if (act === "pay")
+        openPaymentModal("purchase-group", gid, `${who} — ${all.length} purchases combined — still to pay ${money(left)}`, left, ids);
+      else if (act === "hist")
+        openPaymentModal("purchase-group", gid, `${who} — ${all.length} purchases combined — paid in full`, 0, ids);
+      else if (act === "sep")
+        askConfirm(
+          "Separate these purchases?",
+          "Each purchase goes back to its own row — the payments stay recorded.",
+          async () => {
+            busy(true);
+            const { error } = await sb.from("purchases").update({ group_id: null }).eq("group_id", gid);
+            busy(false);
+            if (error) return toast(error.message, true);
+            toast("Purchases separated");
+            loadPurchases();
+          },
+          "Separate",
+          "btn btn-danger"
+        );
     });
   });
 }
@@ -399,6 +478,21 @@ async function savePurchase(e) {
     toast(id ? "Purchase updated" : "Purchase added");
     if (state.view === "payables") loadPayables();
     loadPurchases();
+
+    /* Same day + same supplier already recorded? ASK whether to show them
+       together under one combined total — never combined automatically. */
+    await maybeAskCombine({
+      table: "purchases",
+      id: purchaseId,
+      date: payload.entry_date,
+      person: payload.supplier,
+      cols: { date: "entry_date", person: "supplier" },
+      kind: "purchase",
+      reload: () => {
+        if (state.view === "payables") loadPayables();
+        loadPurchases();
+      },
+    });
   } catch (err) {
     fail(err.message);
   } finally {

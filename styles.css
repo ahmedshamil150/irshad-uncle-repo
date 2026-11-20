@@ -327,6 +327,16 @@ h1, h2, h3 { margin: 0; }
 .row-bal { font-size: 12px; margin-top: 3px; font-weight: 600; }
 .bal-due { color: var(--red); }
 .bal-ok { color: var(--green); }
+/* Combined block (purchases/sales the user chose to combine): a tinted
+   header holding the combined total + its action buttons, with the
+   individual entries nested underneath */
+.row-group { background: var(--card); border: 1.5px solid #d9e2fb; border-radius: var(--radius); overflow: hidden; }
+.grp-head { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; padding: 12px 14px; background: #eef3ff; border-bottom: 1.5px solid #d9e2fb; }
+.grp-head .row-title { color: var(--brand); }
+.grp-members { padding: 4px 9px 7px; }
+.grp-members .row { background: transparent; border: 0; border-bottom: 1px solid #eef1f7; border-radius: 0; padding: 11px 5px; cursor: pointer; }
+.grp-members .row:last-child { border-bottom: 0; }
+.grp-members .row:active { background: #f7f9fd; }
 /* a spend revealed under its card while searching — indented and dimmed so
    the card stays the anchor of the result */
 .row-child { margin-left: 18px; padding: 10px 12px; background: #f8fafc; }

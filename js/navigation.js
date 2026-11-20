@@ -46,6 +46,8 @@ const state = {
   /* ⚙ filter panels on the other list tabs (sales keeps state.f above) */
   lf: {},
   payMax: 0,
+  /* member ids behind the open group payment sheet (purchase-group / sale-group) */
+  payIds: null,
   returnTo: null,
   returnSaleId: null,
   returnLoanId: null,

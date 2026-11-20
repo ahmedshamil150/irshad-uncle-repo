@@ -24,6 +24,7 @@ create table if not exists public.sales (
   adjustment_item   text,
   loan_amount    numeric(14,2) not null default 0 check (loan_amount >= 0),
   is_installment boolean not null default false,
+  group_id       uuid,   -- same day + same customer, confirmed combined by the user
   notes          text,
   constraint paid_within_total check (cash_amount + bank_amount + adjustment_amount + loan_amount <= total_amount + 0.009)
 );
@@ -88,7 +89,8 @@ create table if not exists public.purchases (
   bank_amount numeric(14,2) not null default 0 check (bank_amount >= 0),
   due_date    date,
   notes      text,
-  mode       text not null default 'batch' check (mode in ('batch','local'))
+  mode       text not null default 'batch' check (mode in ('batch','local')),
+  group_id   uuid   -- same day + same supplier, confirmed combined by the user
 );
 
 -- Zakat: money given out as zakat.
@@ -173,6 +175,10 @@ alter table public.payments add column if not exists loan_id uuid references pub
 alter table public.payables add column if not exists due_date date;
 alter table public.purchases add column if not exists due_date date;
 alter table public.payments add column if not exists payer text;
+-- Entries the user chose to combine (same day + same person): rows sharing a
+-- group_id are drawn as one block with a combined total; never set automatically.
+alter table public.purchases add column if not exists group_id uuid;
+alter table public.sales add column if not exists group_id uuid;
 alter table public.payments drop constraint if exists one_target;
 alter table public.payments add constraint one_target check (
   (case when sale_id is not null then 1 else 0 end

@@ -157,13 +157,60 @@ function dismissModals() {
   }
 }
 
-/* confirm dialog */
+/* confirm dialog — `yes`/`cls` colour the confirm button (defaults keep the
+   red Delete used by every removal) */
 let confirmCb = null;
-function askConfirm(title, text, cb) {
+function askConfirm(title, text, cb, yes = "Delete", cls = "btn btn-danger") {
   $("#confirm-title").textContent = title;
   $("#confirm-text").textContent = text;
+  const y = $("#confirm-yes");
+  y.textContent = yes;
+  y.className = cls;
   confirmCb = cb;
   openModal("modal-confirm");
+}
+
+/* a fresh uuid for a combine group (crypto.randomUUID where available) */
+const newUUID = () =>
+  crypto.randomUUID ? crypto.randomUUID()
+  : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      return (c === "x" ? r : (r & 3) | 8).toString(16);
+    });
+
+/* After a purchase or sale is saved: when the SAME day and the SAME person
+   already has other entries and this one isn't combined yet, ASK the user
+   whether to show them together under one combined total — never automatic.
+   cols = { date, person } column names; reload redraws the list on "yes". */
+async function maybeAskCombine({ table, id, date, person, cols, kind, reload }) {
+  if (!person || !date || !id) return;
+  /* an already-combined row never asks again */
+  const self = await sb.from(table).select("group_id").eq("id", id).maybeSingle();
+  if (self.error || self.data?.group_id) return;
+  const pattern = String(person).replace(/[%_\\]/g, "\\$&");   /* literal match */
+  const { data, error } = await sb.from(table)
+    .select("id, group_id")
+    .eq(cols.date, date)
+    .ilike(cols.person, pattern)
+    .neq("id", id);
+  if (error || !data || !data.length) return;
+  const n = data.length;
+  const other = kind === "sale" ? (n === 1 ? "sale" : "sales") : (n === 1 ? "purchase" : "purchases");
+  askConfirm(
+    `Combine with ${n} other ${other}?`,
+    `${fmtDate(date)} · ${person} — ${n} other ${other} ${n === 1 ? "is" : "are"} recorded for the same day and the same ${kind === "sale" ? "customer" : "supplier"}. Show ${n === 1 ? "it" : "them"} together with one combined total? You can separate them later.`,
+    async () => {
+      const gid = data.find((m) => m.group_id)?.group_id || newUUID();
+      const { error: uErr } = await sb.from(table)
+        .update({ group_id: gid })
+        .in("id", [id, ...data.map((m) => m.id)]);
+      if (uErr) return toast(uErr.message, true);
+      toast(`Combined under one total ✓`);
+      reload();
+    },
+    "Combine",
+    "btn btn-primary"
+  );
 }
 
 

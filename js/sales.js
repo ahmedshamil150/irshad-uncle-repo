@@ -21,10 +21,15 @@ async function loadSales() {
     if (sR.error) throw sR.error;
     if (pR.error) throw pR.error;
     state.sales = sR.data || [];
-    /* total paid so far, per sale id — saleOutstanding() reads this map */
-    const pay = {};
-    for (const p of pR.data || []) if (p.sale_id) pay[p.sale_id] = (pay[p.sale_id] || 0) + num(p.amount);
+    /* total paid so far, per sale id — saleOutstanding() reads this map;
+       payN counts the payments so a combined block can offer History */
+    const pay = {}, payN = {};
+    for (const p of pR.data || []) if (p.sale_id) {
+      pay[p.sale_id] = (pay[p.sale_id] || 0) + num(p.amount);
+      payN[p.sale_id] = (payN[p.sale_id] || 0) + 1;
+    }
     state.salesPay = pay;
+    state.salesPayN = payN;
 
     /* refresh the customer-name suggestions from every sale we have */
     $("#customer-names").innerHTML = [
@@ -117,11 +122,31 @@ function renderSales() {
       ? "⚠ The “From” date is after the “To” date — nothing can match."
       : `${rows.length} of ${state.sales.length} sales match`;
 
-  $("#sales-list").innerHTML = rows.length
-    ? rows
-        .map((r) => {
-          const bal = saleOutstanding(r);
-          return `<div class="row" data-id="${r.id}">
+  const canWrite = can("sales", "write");
+
+  /* Entries the user confirmed as one group (same day + same customer) draw
+     as a block: a header with the COMBINED total, the individual sales
+     nested below it. The header pays the whole total; a row opens itself. */
+  const groupAll = new Map(); // group id → every member (full list, for totals)
+  for (const r of state.sales) if (r.group_id) {
+    const g = groupAll.get(r.group_id);
+    if (g) g.push(r); else groupAll.set(r.group_id, [r]);
+  }
+  const shownIds = new Set(rows.map((r) => r.id));
+  const items = [];   // { solo } | { gid, all } — list order (newest first)
+  const seen = new Set();
+  for (const r of state.sales) {
+    if (r.group_id) {
+      if (seen.has(r.group_id)) continue;
+      seen.add(r.group_id);
+      const all = groupAll.get(r.group_id);
+      if (all.some((m) => shownIds.has(m.id))) items.push({ gid: r.group_id, all });
+    } else if (shownIds.has(r.id)) items.push({ solo: r });
+  }
+
+  const rowHTML = (r) => {
+    const bal = saleOutstanding(r);
+    return `<div class="row" data-id="${r.id}">
             <div class="row-main">
               <div class="row-title">${esc(r.customer_name)}
                 <span class="badge badge-${r.source}">${esc(srcName(r.source))}</span>
@@ -134,8 +159,39 @@ function renderSales() {
               <div class="row-bal ${bal > 0.009 ? "bal-due" : "bal-ok"}">${bal > 0.009 ? money(bal) + " left" : "Paid in full"}</div>
             </div>
           </div>`;
-        })
-        .join("")
+  };
+
+  // The combined block's header: total of ALL its sales + what is still to
+  // receive across them, then the members that pass the current filters.
+  const groupHTML = (gid, all) => {
+    const total = all.reduce((s, r) => s + num(r.total_amount), 0);
+    const left = round2(all.reduce((s, r) => s + saleOutstanding(r), 0));
+    const payN = all.reduce((s, r) => s + ((state.salesPayN || {})[r.id] || 0), 0);
+    const date = all.map((r) => r.sale_date).sort().pop();   // ISO dates sort chronologically
+    const who = all[0].customer_name;
+    const members = all.filter((m) => shownIds.has(m.id)).map(rowHTML).join("");
+    return `<div class="row-group" data-group="${gid}">
+      <div class="grp-head">
+        <div class="row-main">
+          <div class="row-title">${esc(who)} <span class="badge badge-partial">${all.length} combined</span></div>
+          <div class="row-sub">${fmtDate(date)} · combined total${payN ? ` · ${payN} payment${payN === 1 ? "" : "s"}` : ""}</div>
+        </div>
+        <div class="row-right">
+          <div class="row-amount ${left > 0.009 ? "bal-due" : ""}">${money(total)}</div>
+          <div class="row-bal ${left > 0.009 ? "" : "bal-ok"}" ${left > 0.009 ? 'style="color:var(--muted)"' : ""}>${left > 0.009 ? money(left) + " left" : "Paid in full"}</div>
+        </div>
+        ${canWrite ? `<div class="row-actions">
+          ${left > 0.009 ? `<button type="button" class="btn btn-sm btn-primary" data-grpact="pay">+ Receive total</button>` : ""}
+          ${left <= 0.009 && payN > 0 ? `<button type="button" class="btn btn-sm btn-ghost" data-grpact="hist">History</button>` : ""}
+          <button type="button" class="btn btn-sm btn-ghost" data-grpact="sep">Separate</button>
+        </div>` : ""}
+      </div>
+      <div class="grp-members">${members}</div>
+    </div>`;
+  };
+
+  $("#sales-list").innerHTML = items.length
+    ? items.map((it) => (it.solo ? rowHTML(it.solo) : groupHTML(it.gid, it.all))).join("")
     : `<div class="empty">${
         active
           ? "No sales match these filters."
@@ -145,6 +201,38 @@ function renderSales() {
   $$("#sales-list .row").forEach((el) =>
     el.addEventListener("click", () => openSaleDetail(el.dataset.id))
   );
+
+  // Wire the combined-block headers: receive the whole total (the sheet
+  // splits it across the sales), view the combined history, or separate.
+  $$("#sales-list .row-group").forEach((el) => {
+    const gid = el.dataset.group;
+    const all = groupAll.get(gid) || [];
+    const left = round2(all.reduce((s, r) => s + saleOutstanding(r), 0));
+    const ids = all.map((m) => m.id);
+    const who = all[0]?.customer_name || "Combined sale";
+    el.querySelector(".grp-head").addEventListener("click", (e) => {
+      const act = e.target.closest("[data-grpact]")?.dataset.grpact;
+      if (act === "pay")
+        openPaymentModal("sale-group", gid, `${who} — ${all.length} sales combined — still to receive ${money(left)}`, left, ids);
+      else if (act === "hist")
+        openPaymentModal("sale-group", gid, `${who} — ${all.length} sales combined — paid in full`, 0, ids);
+      else if (act === "sep")
+        askConfirm(
+          "Separate these sales?",
+          "Each sale goes back to its own row — the payments stay recorded.",
+          async () => {
+            busy(true);
+            const { error } = await sb.from("sales").update({ group_id: null }).eq("group_id", gid);
+            busy(false);
+            if (error) return toast(error.message, true);
+            toast("Sales separated");
+            loadSales();
+          },
+          "Separate",
+          "btn btn-danger"
+        );
+    });
+  });
 }
 
 /* one-tap date ranges for the filter panel */
@@ -605,6 +693,22 @@ async function saveSale(e) {
     if (state.view === "sales") loadSales();
     else if (state.view === "receivables") loadReceivables();
     else if (state.view === "dashboard") loadDashboard();
+
+    /* Same day + same customer already recorded? ASK whether to show them
+       together under one combined total — never combined automatically. */
+    await maybeAskCombine({
+      table: "sales",
+      id: saleId,
+      date: payload.sale_date,
+      person: customer,
+      cols: { date: "sale_date", person: "customer_name" },
+      kind: "sale",
+      reload: () => {
+        if (state.view === "sales") loadSales();
+        else if (state.view === "receivables") loadReceivables();
+        else if (state.view === "dashboard") loadDashboard();
+      },
+    });
   } catch (err) {
     fail(err.message);
   } finally {
